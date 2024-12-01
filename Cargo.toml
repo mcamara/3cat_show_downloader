@@ -1,0 +1,36 @@
+[package]
+name = "cat_show_downloader"
+authors.workspace = true
+description = "Download complete TV shows from 3cat.cat in a single command"
+documentation = "https://github.com/mcamara/3cat_show_downloader"
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[workspace.package]
+authors = ["Marc Cámara <marc.camara@icloud.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/mcamara/3cat_show_downloader"
+version = "0.0.1"
+
+
+[dependencies]
+async-trait = "0.1.74"
+clap = { version = "4", features = ["derive"] }
+regex = "1.7.1"
+reqwest = { version = "0.12", default-features=false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full", "sync"] }
+tracing = "0.1"
+unidecode = "0"
+
+[dev-dependencies]
+anyhow = "1.0"
+
+[package.metadata.release]
+tag-name = "v{{version}}"
