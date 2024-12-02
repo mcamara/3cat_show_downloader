@@ -31,7 +31,7 @@ El "slug" és el nom de la sèrie en minúscules i sense espais. Si tens la URL 
 Per exemple:
 
 - La URL de la sèrie "Bola de Drac" és https://www.3cat.cat/3cat/bola-de-drac/, el seu "slug" és `bola-de-drac`.
-- Si fos una sèrie de Súper3, com per exemple https://www.3cat.cat/tc3/sx3/kuroko-basquet/, el "slug" seria `kuroko-basquet`.
+- Si fos una sèrie de Súper3, com per exemple https://www.3cat.cat/tv3/sx3/kuroko-basquet/, el "slug" seria `kuroko-basquet`.
 
 ### Problemes coneguts (i que probablement no solucionaré mai, per ser sincer)
 

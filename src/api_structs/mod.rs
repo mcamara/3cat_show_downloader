@@ -12,23 +12,6 @@ impl Display for Tv3Error {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Root {
-    #[serde(rename(deserialize = "pageProps"))]
-    pub page_props: PageProps,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PageProps {
-    #[serde(rename(deserialize = "mappingProgramaSlug"))]
-    pub tv_show_data: MappingProgramaSlug,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct MappingProgramaSlug {
-    pub id: i32,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct EpisodesRoot {
     #[serde(rename(deserialize = "resposta"))]
     pub response: MainResponse,
