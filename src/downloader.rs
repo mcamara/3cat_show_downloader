@@ -47,6 +47,8 @@ fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Str
 }
 
 async fn download_content(url: &str, path: &str) -> Result<()> {
+    println!("Downloading from {}", url);
+    return Ok(());
     let response = reqwest::get(url)
         .await
         .map_err(|e| Error::DownloadingError(e.to_string()))?;
