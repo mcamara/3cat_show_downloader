@@ -42,6 +42,16 @@ async fn main() -> Result<()> {
 
     let mut episodes = get_episodes(&http_client, id).await?;
 
+    // Create build directory if it doesn't exist
+    std::fs::create_dir_all(&args.directory).map_err(|e| {
+        Error::IoError(format!(
+            "Failed to create directory {}: {}",
+            args.directory, e
+        ))
+    })?;
+
+    let episodes_count = episodes.len();
+
     for episode in episodes.iter_mut() {
         if episode.episode_number < args.start_from_episode {
             println!("Skipping episode {}", episode.episode_number);
@@ -66,10 +76,17 @@ async fn main() -> Result<()> {
             break;
         }
 
-        if let Some(subtitles) = tv3_tv_show_api_response.subtitles.first() {
-            episode.subtitle_url = Some(subtitles.url.clone());
+        for subtitle in tv3_tv_show_api_response.subtitles {
+            episode.subtitles.push(Subtitle {
+                iso: subtitle.iso,
+                url: subtitle.url,
+            });
         }
 
+        println!(
+            "Downloading episode {} of {}",
+            episode.episode_number, episodes_count
+        );
         downloader::download_episode(episode, &args.directory).await?;
     }
 
@@ -103,7 +120,7 @@ where
                 id: item.id,
                 title: item.title,
                 video_url: None,
-                subtitle_url: None,
+                subtitles: Vec::new(),
                 episode_number: item.number_of_episode,
                 tv_show_name: item.tv_show_name,
             });

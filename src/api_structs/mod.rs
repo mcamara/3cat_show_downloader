@@ -58,4 +58,5 @@ pub struct UrlMetadata {
 #[derive(Debug, Deserialize)]
 pub struct SingleEpisodeSubtitles {
     pub url: String,
+    pub iso: String,
 }

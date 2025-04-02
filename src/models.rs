@@ -2,11 +2,17 @@ use regex::Regex;
 use unidecode::unidecode;
 
 #[derive(Debug)]
+pub struct Subtitle {
+    pub url: String,
+    pub iso: String,
+}
+
+#[derive(Debug)]
 pub struct Episode {
     pub id: i32,
     pub title: String,
     pub video_url: Option<String>,
-    pub subtitle_url: Option<String>,
+    pub subtitles: Vec<Subtitle>,
     pub episode_number: i32,
     pub tv_show_name: String,
 }
@@ -43,7 +49,7 @@ mod tests {
             id: 1,
             title: "T1xC7 - Veureu una cosa al·lucinant i màgica!".to_string(),
             video_url: None,
-            subtitle_url: None,
+            subtitles: Vec::new(),
             episode_number: 7,
             tv_show_name: "Tv show name".to_string(),
         };
@@ -56,7 +62,7 @@ mod tests {
             id: 1,
             title: "T1xC7 - Veureu una cosa al·lucinant!".to_string(),
             video_url: None,
-            subtitle_url: None,
+            subtitles: Vec::new(),
             episode_number: 7,
             tv_show_name: "Tv show name (OVA)".to_string(),
         };

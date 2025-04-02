@@ -9,6 +9,7 @@ pub enum Error {
     DecodingError(String),
     EpisodeDoNotHaveVideoUrl(String),
     DownloadingError(String),
+    IoError(String),
 }
 
 // region: -- Error Boilerplate

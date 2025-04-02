@@ -23,9 +23,10 @@ async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
     download_content(video_url, &video_path).await?;
     println!("Downloaded video to {}", video_path);
 
-    if let Some(subtitle_url) = &episode.subtitle_url {
-        let subtitle_path = full_episode_path(episode, directory, "vtt");
-        download_content(subtitle_url, &subtitle_path).await?;
+    for subtitle in &episode.subtitles {
+        let subtitle_path =
+            full_episode_path(episode, directory, &format!("{}.vtt", &subtitle.iso));
+        download_content(&subtitle.url, &subtitle_path).await?;
         println!("Downloaded subtitle to {}", subtitle_path);
     }
 
