@@ -36,27 +36,3 @@ pub struct Tv3Episode {
     #[serde(rename = "programa")]
     pub tv_show_name: String,
 }
-
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeRoot {
-    pub media: SingleEpisodeMedia,
-    #[serde(rename = "subtitols")]
-    pub subtitles: Vec<SingleEpisodeSubtitles>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeMedia {
-    pub url: Vec<UrlMetadata>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UrlMetadata {
-    pub file: String,
-    pub active: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeSubtitles {
-    pub url: String,
-    pub iso: String,
-}

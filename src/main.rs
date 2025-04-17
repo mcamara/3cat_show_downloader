@@ -5,8 +5,9 @@ mod http_client;
 mod id_retriever;
 mod models;
 
+use anyhow::Result;
 use clap::Parser;
-use error::{Error, Result};
+use error::Error;
 use http_client::HttpClientTrait;
 use models::*;
 use std::sync::Arc;
@@ -27,20 +28,29 @@ struct Args {
     start_from_episode: i32,
 }
 
-const TV3_SINGLE_EPISODE_API_URL: &str =
-    "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
+const TV3_SINGLE_EPISODE_PAGE_URL: &str = "https://www.3cat.cat/3cat/t/video/{id}/";
 
 const TV3_EPISODE_LIST_URL: &str =
 "https://www.3cat.cat/api/3cat/dades/?queryKey=%5B%22tira%22%2C%7B%22url%22%3A%22https%3A%2F%2Fapi.3cat.cat%2Fvideos%3F_format%3Djson%26ordre%3Dcapitol%26origen%3Dllistat%26perfil%3Dpc%26programatv_id%3D{tv_show_id}%26tipus_contingut%3DPPD%26items_pagina%3D1000%26pagina%3D1%26sdom%3Dimg%26version%3D2.0%26cache%3D180%26temporada%3DPUTEMP_{season_number}%26https%3Dtrue%26master%3Dyes%26perfils_extra%3Dimatges_minim_master%22%2C%22moduleName%22%3A%22BlocDeContinguts%22%7D%5D";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_writer(std::io::stderr)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    tracing::info!("Starting TV3 downloader");
+    if let Err(e) = inner_main().await {
+        tracing::error!("Error: {}\n{}", e, e.backtrace());
+        std::process::exit(1);
+    }
+}
+
+async fn inner_main() -> Result<()> {
     let args = Args::parse();
-
-    let http_client = http_client::http_client();
-    let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
-
-    let mut episodes = get_episodes(&http_client, id).await?;
 
     // Create build directory if it doesn't exist
     std::fs::create_dir_all(&args.directory).map_err(|e| {
@@ -50,6 +60,11 @@ async fn main() -> Result<()> {
         ))
     })?;
 
+    let http_client = http_client::http_client();
+    let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
+
+    let mut episodes = get_episodes(&http_client, id).await?;
+
     let episodes_count = episodes.len();
 
     for episode in episodes.iter_mut() {
@@ -58,36 +73,12 @@ async fn main() -> Result<()> {
             continue;
         }
 
-        let tv3_tv_show_api_response = http_client
-            .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
-                TV3_SINGLE_EPISODE_API_URL
-                    .replace("{id}", &episode.id.to_string())
-                    .as_str(),
-                None,
-            )
-            .await
-            .map_err(|e| Error::DecodingError(e.to_string()))?;
-
-        for url in tv3_tv_show_api_response.media.url {
-            if !url.active {
-                continue;
-            }
-            episode.video_url = Some(url.file);
-            break;
-        }
-
-        for subtitle in tv3_tv_show_api_response.subtitles {
-            episode.subtitles.push(Subtitle {
-                iso: subtitle.iso,
-                url: subtitle.url,
-            });
-        }
-
         println!(
-            "Downloading episode {} of {}",
-            episode.episode_number, episodes_count
+            "Downloading episode {} of {}: {}",
+            episode.episode_number, episodes_count, episode.title
         );
         downloader::download_episode(episode, &args.directory).await?;
+        break;
     }
 
     Ok(())
@@ -117,10 +108,8 @@ where
 
         for item in season_episodes {
             episodes.push(Episode {
-                id: item.id,
                 title: item.title,
-                video_url: None,
-                subtitles: Vec::new(),
+                video_url: TV3_SINGLE_EPISODE_PAGE_URL.replace("{id}", &item.id.to_string()),
                 episode_number: item.number_of_episode,
                 tv_show_name: item.tv_show_name,
             });

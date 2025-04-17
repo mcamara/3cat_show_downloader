@@ -2,23 +2,15 @@ use regex::Regex;
 use unidecode::unidecode;
 
 #[derive(Debug)]
-pub struct Subtitle {
-    pub url: String,
-    pub iso: String,
-}
-
-#[derive(Debug)]
 pub struct Episode {
-    pub id: i32,
     pub title: String,
-    pub video_url: Option<String>,
-    pub subtitles: Vec<Subtitle>,
+    pub video_url: String,
     pub episode_number: i32,
     pub tv_show_name: String,
 }
 
 impl Episode {
-    pub fn filename(&self, extension: &str) -> String {
+    pub fn filename(&self) -> String {
         let input = self.title.clone();
         let lowercased = input.to_lowercase();
 
@@ -31,9 +23,9 @@ impl Episode {
 
         // 3cat adds OVAs in the middle of seasons as episode 1, which is wrong, we add ova- to the filename
         if self.tv_show_name.to_lowercase().contains("ova") {
-            format!("ova-{}-{}.{extension}", self.episode_number, title)
+            format!("ova-{}-{}", self.episode_number, title)
         } else {
-            format!("{}-{}.{extension}", self.episode_number, title)
+            format!("{}-{}", self.episode_number, title)
         }
     }
 }
@@ -46,29 +38,25 @@ mod tests {
     #[test]
     fn episode_filename_test() -> Result<()> {
         let episode = Episode {
-            id: 1,
             title: "T1xC7 - Veureu una cosa al·lucinant i màgica!".to_string(),
-            video_url: None,
-            subtitles: Vec::new(),
+            video_url: "".to_string(),
             episode_number: 7,
             tv_show_name: "Tv show name".to_string(),
         };
         assert_eq!(
-            episode.filename("mp4"),
-            "7-t1xc7-veureu-una-cosa-allucinant-i-magica.mp4"
+            episode.filename(),
+            "7-t1xc7-veureu-una-cosa-allucinant-i-magica"
         );
 
         let episode_ova = Episode {
-            id: 1,
             title: "T1xC7 - Veureu una cosa al·lucinant!".to_string(),
-            video_url: None,
-            subtitles: Vec::new(),
+            video_url: "".to_string(),
             episode_number: 7,
             tv_show_name: "Tv show name (OVA)".to_string(),
         };
         assert_eq!(
-            episode_ova.filename("mp4"),
-            "ova-7-t1xc7-veureu-una-cosa-allucinant.mp4"
+            episode_ova.filename(),
+            "ova-7-t1xc7-veureu-una-cosa-allucinant"
         );
         Ok(())
     }

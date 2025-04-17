@@ -1,9 +1,10 @@
-use crate::error::{Error, Result};
+use crate::error::Error;
+use anyhow::Result;
 use regex::Regex;
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
 
-pub async fn get_tv_show_id(slug: &str) -> Result<i32> {
+pub async fn get_tv_show_id(slug: &str) -> Result<i32, Error> {
     let response = reqwest::get(TV3_TV_SHOW_API_URL.replace("{slug}", slug).as_str())
         .await
         .map_err(|e| {

@@ -1,70 +1,34 @@
-use crate::{
-    error::{Error, Result},
-    Episode,
-};
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use crate::{error::Error, Episode};
+use anyhow::{Ok, Result};
 
 pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> {
-    if check_if_episode_exists(episode, directory).await {
-        println!("Episode {} already exists", episode.filename("mp4"));
+    let video_path = full_episode_path(episode, directory);
+    if std::path::Path::new(&video_path).exists() {
+        println!("Episode {} already exists", episode.filename());
         return Ok(());
     }
-
-    download_data(episode, directory).await
-}
-
-async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
-    let Some(video_url) = &episode.video_url else {
-        return Err(Error::EpisodeDoNotHaveVideoUrl(episode.filename("mp4")));
-    };
-
-    let video_path = full_episode_path(episode, directory, "mp4");
-    download_content(video_url, &video_path).await?;
+    download_video_ytdlp(&episode.video_url, &directory).await?;
     println!("Downloaded video to {}", video_path);
-
-    for subtitle in &episode.subtitles {
-        let subtitle_path =
-            full_episode_path(episode, directory, &format!("{}.vtt", &subtitle.iso));
-        download_content(&subtitle.url, &subtitle_path).await?;
-        println!("Downloaded subtitle to {}", subtitle_path);
-    }
-
     Ok(())
 }
 
-async fn check_if_episode_exists(episode: &Episode, directory: &str) -> bool {
-    let video_path = full_episode_path(episode, directory, "mp4");
-    std::path::Path::new(&video_path).exists()
-}
-
-fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> String {
+fn full_episode_path(episode: &Episode, directory: &str) -> String {
     std::path::Path::new(directory)
-        .join(episode.filename(extension))
+        .join(episode.filename())
         .to_str()
         .unwrap()
         .to_string()
 }
 
-async fn download_content(url: &str, path: &str) -> Result<()> {
-    println!("Downloading from {}", url);
-    return Ok(());
-    let response = reqwest::get(url)
-        .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+async fn download_video_ytdlp(url: &str, directory: &str) -> Result<()> {
+    // Find the yt-dlp binary in the PATH
+    let mut command = std::process::Command::new("yt-dlp");
+    command.arg("--write-subs").arg(url).current_dir(directory);
 
-    let mut file = File::create(path)
-        .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
-
-    let content = response
-        .bytes()
-        .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
-
-    file.write_all(&content)
-        .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
-
-    Ok(())
+    command
+        .spawn()
+        .map_err(|e| {
+            Error::DownloadingError(format!("Failed to spawn yt-dlp command: {}", e)).into()
+        })
+        .map(|_| ())
 }

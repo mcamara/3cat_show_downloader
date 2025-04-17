@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 #![allow(clippy::enum_variant_names)]
 
-pub type Result<T> = core::result::Result<T, Error>;
-
 #[derive(Debug)]
 pub enum Error {
     TvShowIdRetrievalError(String),
