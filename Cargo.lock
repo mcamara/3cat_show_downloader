@@ -145,6 +145,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "once_cell",
  "regex",
  "reqwest",
  "serde",

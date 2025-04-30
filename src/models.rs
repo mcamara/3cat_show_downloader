@@ -1,5 +1,9 @@
+use once_cell::sync::Lazy;
 use regex::Regex;
 use unidecode::unidecode;
+
+static REGEX_CLEANER: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9\s-]").unwrap());
+static REGEX_COLLAPSE: Lazy<Regex> = Lazy::new(|| Regex::new(r"-+").unwrap());
 
 #[derive(Debug)]
 pub struct Episode {
@@ -15,10 +19,9 @@ impl Episode {
         let lowercased = input.to_lowercase();
 
         let unaccented = unidecode(&lowercased);
-        let re = Regex::new(r"[^a-z0-9\s-]").unwrap();
-        let cleaned = re.replace_all(&unaccented, "");
+        let cleaned = REGEX_CLEANER.replace_all(&unaccented, "");
         let dash_replaced = cleaned.replace(" ", "-");
-        let collapsed = Regex::new(r"-+").unwrap().replace_all(&dash_replaced, "-");
+        let collapsed = REGEX_COLLAPSE.replace_all(&dash_replaced, "-");
         let title = collapsed.trim_matches('-').to_string();
 
         // 3cat adds OVAs in the middle of seasons as episode 1, which is wrong, we add ova- to the filename
