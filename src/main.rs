@@ -1,5 +1,6 @@
 mod api_structs;
 mod downloader;
+mod subtitles_fix;
 mod error;
 mod http_client;
 mod id_retriever;
@@ -78,6 +79,7 @@ async fn inner_main() -> Result<()> {
             episode.episode_number, episodes_count, episode.title
         );
         downloader::download_episode(episode, &args.directory).await?;
+        subtitles_fix::fix_subtitles(episode, &args.directory)?;
         break;
     }
 
@@ -111,6 +113,7 @@ where
                 title: item.title,
                 video_url: TV3_SINGLE_EPISODE_PAGE_URL.replace("{id}", &item.id.to_string()),
                 episode_number: item.number_of_episode,
+                season_number,
                 tv_show_name: item.tv_show_name,
             });
         }

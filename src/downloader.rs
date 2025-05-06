@@ -3,7 +3,7 @@ use anyhow::{Ok, Result};
 
 pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> {
     let video_path = full_episode_path(episode, directory);
-    if std::path::Path::new(&video_path).exists() {
+    if std::path::Path::new(&format!("{}.mp4", video_path)).exists() {
         println!("Episode {} already exists", episode.filename());
         return Ok(());
     }
@@ -38,5 +38,3 @@ fn download_video_ytdlp(episode: &Episode, directory: &str) -> Result<()> {
         })
         .map(|_| ())
 }
-
-// fn fix_subtitles()
