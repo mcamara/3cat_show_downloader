@@ -20,7 +20,7 @@ pub fn fix_subtitles(episode: &Episode, directory: &str) -> Result<()> {
         let path = match path_result {
             Ok(path) => path,
             Err(e) => {
-                error!(error = e, "Error finding subtitle file: {}", e);
+                error!(error = %e, "Error finding subtitle file: {}", e);
                 continue;
             }
         };

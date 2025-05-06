@@ -7,7 +7,7 @@ pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> 
         println!("Episode {} already exists", episode.filename());
         return Ok(());
     }
-    download_video_ytdlp(&episode, &directory)?;
+    download_video_ytdlp(episode, directory)?;
     println!("Downloaded video to {}", video_path);
     Ok(())
 }
@@ -24,9 +24,7 @@ fn download_video_ytdlp(episode: &Episode, directory: &str) -> Result<()> {
     // Find the yt-dlp binary in the PATH
     let mut command = std::process::Command::new("yt-dlp");
     command
-        .arg("--write-subs")
-        .arg("-N 10")
-        .arg("-o")
+        .args(["--write-subs", "-N", "10", "-o"])
         .arg(episode.filename())
         .arg(&episode.video_url)
         .current_dir(directory);
