@@ -1,22 +1,20 @@
 #![allow(dead_code)]
 #![allow(clippy::enum_variant_names)]
 
-#[derive(Debug)]
+use thiserror::Error;
+
+use crate::{api_structs, http_client};
+
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("Failed to retrieve TV show ID: {0}")]
     TvShowIdRetrievalError(String),
-    DecodingError(String),
-    EpisodeDoNotHaveVideoUrl(String),
-    DownloadingError(String),
-    IoError(String),
+    #[error("Failed to retrieve episodes: {0}")]
+    EpisodeRetrieveError(http_client::Error<api_structs::Tv3Error>),
+    #[error("Failed to spawn yt-dlp command: {0}")]
+    DownloadingError(std::io::Error),
+    #[error("IO error, {1}: {0}")]
+    IoError(String, std::io::Error),
+    #[error("Error fixing subtitle: {0}")]
+    SubtitleError(String),
 }
-
-// region: -- Error Boilerplate
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        write!(fmt, "{self:?}")
-    }
-}
-
-impl std::error::Error for Error {}
-// endregion: -- Error Boilerplate

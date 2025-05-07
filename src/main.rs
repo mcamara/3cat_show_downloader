@@ -1,10 +1,10 @@
 mod api_structs;
 mod downloader;
-mod subtitles_fix;
 mod error;
 mod http_client;
 mod id_retriever;
 mod models;
+mod subtitles_fix;
 
 use anyhow::Result;
 use clap::Parser;
@@ -37,7 +37,10 @@ const TV3_EPISODE_LIST_URL: &str =
 #[tokio::main]
 async fn main() {
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
         .with_writer(std::io::stderr)
         .finish();
 
@@ -54,12 +57,8 @@ async fn inner_main() -> Result<()> {
     let args = Args::parse();
 
     // Create build directory if it doesn't exist
-    std::fs::create_dir_all(&args.directory).map_err(|e| {
-        Error::IoError(format!(
-            "Failed to create directory {}: {}",
-            args.directory, e
-        ))
-    })?;
+    std::fs::create_dir_all(&args.directory)
+        .map_err(|e| Error::IoError(format!("Failed to create directory {}", args.directory), e))?;
 
     let http_client = http_client::http_client();
     let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
@@ -101,7 +100,7 @@ where
                 None,
             )
             .await
-            .map_err(|e| Error::DecodingError(e.to_string()))?;
+            .map_err(|e| Error::EpisodeRetrieveError(e))?;
 
         let season_episodes = tv3_tv_show_api_response.response.items.item;
         if season_episodes.is_empty() {

@@ -31,8 +31,6 @@ fn download_video_ytdlp(episode: &Episode, directory: &str) -> Result<()> {
 
     command
         .spawn()
-        .map_err(|e| {
-            Error::DownloadingError(format!("Failed to spawn yt-dlp command: {}", e)).into()
-        })
+        .map_err(|e| Error::DownloadingError(e).into())
         .map(|_| ())
 }

@@ -1,8 +1,16 @@
+use std::path::PathBuf;
+
+use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use tracing::debug;
 use unidecode::unidecode;
 
+use crate::error::Error;
+
 static REGEX_CLEANER: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9A-Z\s-]").unwrap());
+static REGEX_SUBTITLE_LANGUAGE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\.([a-z]+)\.fixed.vtt$").unwrap());
 
 #[derive(Debug)]
 pub struct Episode {
@@ -22,10 +30,68 @@ impl Episode {
 
         // 3cat adds OVAs in the middle of seasons as episode 1, which is wrong, we add ova- to the filename
         if self.tv_show_name.to_lowercase().contains("ova") {
-            format!("S{:02}E{:02} (OVA) - {}", self.season_number, self.episode_number, title)
+            format!(
+                "S{:02}E{:02} (OVA) - {}",
+                self.season_number, self.episode_number, title
+            )
         } else {
-            format!("S{:02}E{:02} - {}", self.season_number, self.episode_number, title)
+            format!(
+                "S{:02}E{:02} - {}",
+                self.season_number, self.episode_number, title
+            )
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Subtitle {
+    path: PathBuf,
+
+    /// ISO 639-3 language code
+    language_code: String,
+}
+
+impl Subtitle {
+    pub fn new(path: PathBuf) -> Result<Self> {
+        let language_code = Self::get_subtitle_language_code(&path)?;
+        Ok(Self {
+            path,
+            language_code,
+        })
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn language_code(&self) -> &String {
+        &self.language_code
+    }
+
+    fn get_subtitle_language_code(path: &PathBuf) -> Result<String> {
+        let language_code = Self::get_file_name_language_code(path).ok_or(Error::SubtitleError(
+            "Failed to get language code".to_string(),
+        ))?;
+
+        let iso_639_3_code = isolang::Language::from_639_1(&language_code)
+            .ok_or(Error::SubtitleError(format!(
+                "Failed to convert ISO 639-1 language code '{}' to ISO 639-3",
+                language_code
+            )))?
+            .to_639_3()
+            .to_string();
+
+        Ok(iso_639_3_code)
+    }
+
+    fn get_file_name_language_code(path: &PathBuf) -> Option<String> {
+        let filename = path.file_name()?.to_str()?;
+        let captures = REGEX_SUBTITLE_LANGUAGE.captures(filename)?;
+
+        let language_code = captures.get(1)?.as_str().to_string();
+        debug!("Language code: \"{}\" for filename \"{}\"", language_code, filename);
+
+        Some(language_code)
     }
 }
 
