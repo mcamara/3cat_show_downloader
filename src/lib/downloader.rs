@@ -1,4 +1,4 @@
-use crate::{error::Error, Episode};
+use crate::{error::Error, models::Episode};
 use anyhow::{Ok, Result};
 
 pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> {

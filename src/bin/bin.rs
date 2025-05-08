@@ -1,16 +1,9 @@
-mod api_structs;
-mod downloader;
-mod error;
-mod http_client;
-mod id_retriever;
-mod models;
-mod subtitles_fix;
-
 use anyhow::Result;
+use cat_show_downloader::{
+    api_structs, downloader, error::Error, http_client, http_client::HttpClientTrait, id_retriever,
+    models::*, subtitles_fix,
+};
 use clap::Parser;
-use error::Error;
-use http_client::HttpClientTrait;
-use models::*;
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
@@ -100,7 +93,7 @@ where
                 None,
             )
             .await
-            .map_err(|e| Error::EpisodeRetrieveError(e))?;
+            .map_err(Error::EpisodeRetrieveError)?;
 
         let season_episodes = tv3_tv_show_api_response.response.items.item;
         if season_episodes.is_empty() {

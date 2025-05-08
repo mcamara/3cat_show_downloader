@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
@@ -68,7 +68,7 @@ impl Subtitle {
         &self.language_code
     }
 
-    fn get_subtitle_language_code(path: &PathBuf) -> Result<String> {
+    fn get_subtitle_language_code(path: &Path) -> Result<String> {
         let language_code = Self::get_file_name_language_code(path).ok_or(Error::SubtitleError(
             "Failed to get language code".to_string(),
         ))?;
@@ -84,12 +84,15 @@ impl Subtitle {
         Ok(iso_639_3_code)
     }
 
-    fn get_file_name_language_code(path: &PathBuf) -> Option<String> {
+    fn get_file_name_language_code(path: &Path) -> Option<String> {
         let filename = path.file_name()?.to_str()?;
         let captures = REGEX_SUBTITLE_LANGUAGE.captures(filename)?;
 
         let language_code = captures.get(1)?.as_str().to_string();
-        debug!("Language code: \"{}\" for filename \"{}\"", language_code, filename);
+        debug!(
+            "Language code: \"{}\" for filename \"{}\"",
+            language_code, filename
+        );
 
         Some(language_code)
     }

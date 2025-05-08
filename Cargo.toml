@@ -17,6 +17,13 @@ readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"
 version = "0.0.2"
 
+[lib]
+name = "cat_show_downloader"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "cat_show_downloader"
+path = "src/bin/bin.rs"
 
 [dependencies]
 anyhow = "1.0"
