@@ -31,10 +31,15 @@ const TV3_EPISODE_LIST_URL: &str =
 async fn main() {
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .or_else(|e| {
+                    println!("Using default log filter directive: {}", e);
+                    tracing_subscriber::EnvFilter::try_new("info")
+                })
+                .unwrap(),
         )
         .with_writer(std::io::stderr)
+        .compact()
         .finish();
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
@@ -101,13 +106,13 @@ where
         }
 
         for item in season_episodes {
-            episodes.push(Episode {
-                title: item.title,
-                video_url: TV3_SINGLE_EPISODE_PAGE_URL.replace("{id}", &item.id.to_string()),
-                episode_number: item.number_of_episode,
+            episodes.push(Episode::new(
+                item.title,
+                TV3_SINGLE_EPISODE_PAGE_URL.replace("{id}", &item.id.to_string()),
+                item.number_of_episode,
                 season_number,
-                tv_show_name: item.tv_show_name,
-            });
+                item.tv_show_name,
+            ));
         }
     }
 

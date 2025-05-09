@@ -18,3 +18,13 @@ pub enum Error {
     #[error("Error fixing subtitle: {0}")]
     SubtitleError(String),
 }
+
+impl Error {
+    pub fn io_error(message: &str, error: std::io::Error) -> Self {
+        Error::IoError(message.to_string(), error)
+    }
+
+    pub fn subtitle_error(message: &str) -> Self {
+        Error::SubtitleError(message.to_string())
+    }
+}
