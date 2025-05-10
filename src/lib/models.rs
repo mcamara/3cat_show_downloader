@@ -7,7 +7,7 @@ use regex::Regex;
 use tracing::debug;
 use unidecode::unidecode;
 
-use crate::error::Error;
+use crate::utils::error::Error;
 
 static REGEX_CLEANER: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9A-Z\s-]").unwrap());
 static REGEX_SUBTITLE_LANGUAGE: Lazy<Regex> =

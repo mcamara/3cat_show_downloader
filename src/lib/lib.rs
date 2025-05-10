@@ -1,7 +1,6 @@
-pub mod api_structs;
+pub mod info_3cat;
 pub mod downloader;
-pub mod error;
+pub mod utils;
 pub mod http_client;
-pub mod id_retriever;
 pub mod models;
 pub mod subtitles_fix;

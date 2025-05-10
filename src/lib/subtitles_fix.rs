@@ -1,6 +1,6 @@
 use crate::{
-    error::Error,
     models::{Episode, Subtitle},
+    utils::error::Error,
 };
 use anyhow::Result;
 use glob::GlobError;
@@ -115,7 +115,7 @@ fn clean_and_build_subtitle(path: PathBuf) -> Result<Subtitle> {
 fn add_subtitles_to_video_file(
     episode: &Episode,
     directory: &Path,
-    subtitles: &Vec<Subtitle>,
+    subtitles: &[Subtitle],
 ) -> Result<()> {
     // Use ffmpeg to add subtitles to the video file
     let video_file = episode.original_video_path(directory);

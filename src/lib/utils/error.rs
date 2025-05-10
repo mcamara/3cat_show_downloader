@@ -3,7 +3,7 @@
 
 use thiserror::Error;
 
-use crate::{api_structs, http_client};
+use crate::{http_client, info_3cat::api_structs};
 
 #[derive(Debug, Error)]
 pub enum Error {
