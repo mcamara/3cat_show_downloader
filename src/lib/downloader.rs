@@ -3,7 +3,7 @@ use crate::{
     utils::error::Error,
 };
 use anyhow::{Ok, Result};
-use std::path::Path;
+use std::{path::Path, process::Command};
 use tracing::info;
 
 pub async fn download_all_episodes(
@@ -45,16 +45,19 @@ pub async fn download_episode(episode: &Episode, directory: &Path) -> Result<()>
 }
 
 fn download_video_ytdlp(episode: &Episode, directory: &Path) -> Result<()> {
-    // Find the yt-dlp binary in the PATH
-    let mut command = std::process::Command::new("yt-dlp");
-    command
+    let status = Command::new("yt-dlp")
         .args(["--write-subs", "-N", "10", "-o"])
         .arg(episode.base_filename())
         .arg(&episode.video_url)
-        .current_dir(directory);
+        .current_dir(directory)
+        .status()?;
 
-    command
-        .spawn()
-        .map_err(|e| Error::DownloadingError(e).into())
-        .map(|_| ())
+    if status.success() {
+        Ok(())
+    } else {
+        Err(
+            Error::DownloadingError(format!("Failed to download episode: {}", episode.video_url))
+                .into(),
+        )
+    }
 }

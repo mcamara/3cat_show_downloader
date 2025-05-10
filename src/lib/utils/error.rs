@@ -12,7 +12,7 @@ pub enum Error {
     #[error("Failed to retrieve episodes: {0}")]
     EpisodeRetrieveError(http_client::Error<api_structs::Tv3Error>),
     #[error("Failed to spawn yt-dlp command: {0}")]
-    DownloadingError(std::io::Error),
+    DownloadingError(String),
     #[error("IO error, {1}: {0}")]
     IoError(String, std::io::Error),
     #[error("Error fixing subtitle: {0}")]
@@ -22,6 +22,10 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn downloading_error(message: &str) -> Self {
+        Error::DownloadingError(message.to_string())
+    }
+    
     pub fn io_error(message: &str, error: std::io::Error) -> Self {
         Error::IoError(message.to_string(), error)
     }

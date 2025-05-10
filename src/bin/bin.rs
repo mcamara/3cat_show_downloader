@@ -18,6 +18,9 @@ struct Args {
     /// Episode number to start from, default to the first one
     #[arg(short, long, default_value_t = 1)]
     start_from_episode: i32,
+
+    #[arg(long, default_value_t = false)]
+    keep_all_files: bool
 }
 
 #[tokio::main]
