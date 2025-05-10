@@ -17,6 +17,8 @@ pub enum Error {
     IoError(String, std::io::Error),
     #[error("Error fixing subtitle: {0}")]
     SubtitleError(String),
+    #[error("Failed to convert OsString to String: {0:?}")]
+    OsStringError(std::ffi::OsString),
 }
 
 impl Error {

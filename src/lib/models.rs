@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::cell::OnceCell;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
@@ -25,11 +25,11 @@ pub struct Episode {
 
 impl Episode {
     pub fn new(
-        title: String, 
-        video_url: String, 
-        episode_number: i32, 
-        season_number: i32, 
-        tv_show_name: String
+        title: String,
+        video_url: String,
+        episode_number: i32,
+        season_number: i32,
+        tv_show_name: String,
     ) -> Self {
         Self {
             title,
@@ -41,7 +41,7 @@ impl Episode {
         }
     }
 
-    pub fn filename(&self) -> &str {
+    pub fn base_filename(&self) -> &str {
         self.cached_filename.get_or_init(|| {
             let input = self.title.clone();
             let unaccented = unidecode(&input);
@@ -60,6 +60,22 @@ impl Episode {
                 )
             }
         })
+    }
+
+    pub fn original_video_filename(&self) -> String {
+        format!("{}.orig.mp4", self.base_filename())
+    }
+
+    pub fn fixed_video_filename(&self) -> String {
+        format!("{}.fixed.mp4", self.base_filename())
+    }
+
+    pub fn original_video_path(&self, directory: &Path) -> PathBuf {
+        directory.join(PathBuf::from(self.original_video_filename()))
+    }
+
+    pub fn fixed_video_path(&self, directory: &Path) -> PathBuf {
+        directory.join(PathBuf::from(self.fixed_video_filename()))
     }
 }
 
@@ -80,7 +96,7 @@ impl Subtitle {
         })
     }
 
-    pub fn path(&self) -> &PathBuf {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
@@ -133,7 +149,7 @@ mod tests {
             "Tv show name".to_string(),
         );
         assert_eq!(
-            episode.filename(),
+            episode.base_filename(),
             "S01E07 - T1xC7 - Veureu una cosa allucinant i magica"
         );
 
@@ -145,7 +161,7 @@ mod tests {
             "Tv show name (OVA)".to_string(),
         );
         assert_eq!(
-            episode_ova.filename(),
+            episode_ova.base_filename(),
             "S01E07 (OVA) - T1xC7 - Veureu una cosa allucinant i magica"
         );
         Ok(())

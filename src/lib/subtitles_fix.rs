@@ -8,13 +8,13 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::{
     io::{BufRead, BufReader},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 static REGEX_SUBTITLE_FIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^Region:").unwrap());
 
-pub fn fix_subtitles(episode: &Episode, directory: &str) -> Result<()> {
+pub fn fix_subtitles(episode: &Episode, directory: &Path) -> Result<()> {
     let paths = get_subtitles_pats(episode, directory)?;
 
     let subtitles: Vec<Subtitle> = paths
@@ -32,18 +32,27 @@ pub fn fix_subtitles(episode: &Episode, directory: &str) -> Result<()> {
         info!("Subtitle language code: {}", subtitle.language_code());
     }
 
-    add_subtitles_to_video_file(episode, &subtitles)
+    add_subtitles_to_video_file(episode, directory, &subtitles)
 }
 
-fn get_subtitles_pats(episode: &Episode, directory: &str) -> Result<Vec<PathBuf>> {
+fn get_subtitles_pats(episode: &Episode, directory: &Path) -> Result<Vec<PathBuf>> {
     // Find all files with "name.<language>.vtt" in the directory and that do not contain
     // "fixed.vtt"
-    let pattern = format!("{}.*.vtt", episode.filename());
-    let paths_results: Vec<Result<PathBuf, GlobError>> =
-        glob::glob(&format!("{}/{}", directory, pattern))?.collect();
+    let pattern = format!("{}.*.vtt", episode.base_filename());
+    let paths_results: Vec<Result<PathBuf, GlobError>> = glob::glob(&format!(
+        "{}/{}",
+        directory
+            .to_str()
+            .ok_or(Error::OsStringError(directory.as_os_str().into()))?,
+        pattern
+    ))?
+    .collect();
 
     if paths_results.is_empty() {
-        warn!("No subtitle files found for episode {}", episode.filename());
+        warn!(
+            "No subtitle files found for episode {}",
+            episode.base_filename()
+        );
         return Ok(vec![]);
     }
 
@@ -103,33 +112,70 @@ fn clean_and_build_subtitle(path: PathBuf) -> Result<Subtitle> {
     Ok(subtitle)
 }
 
-fn add_subtitles_to_video_file(episode: &Episode, subtitles: &Vec<Subtitle>) -> Result<()> {
+fn add_subtitles_to_video_file(
+    episode: &Episode,
+    directory: &Path,
+    subtitles: &Vec<Subtitle>,
+) -> Result<()> {
     // Use ffmpeg to add subtitles to the video file
-    let video_file = format!("{}.mp4", episode.filename());
-    let output_file = format!("{}_fixed.mp4", episode.filename());
+    let video_file = episode.original_video_path(directory);
+    let output_file = episode.fixed_video_path(directory);
 
     let mut command = std::process::Command::new("ffmpeg");
-    command.arg("-i").arg(video_file);
-    for subtitle in subtitles {
+    command.arg("-y").arg("-i").arg(video_file.as_os_str());
+
+    // The inputs go first
+    for subtitle in subtitles.iter() {
         command.arg("-i").arg(subtitle.path());
     }
-    command.arg("-c").arg("copy").arg(output_file);
+
+    command
+        .args(["-map", "0:v", "-map", "0:a"])
+        .args(["-c", "copy"]);
 
     for (i, subtitle) in subtitles.iter().enumerate() {
-        command.arg(format!(
-            "-metadata:s:s:{} language={}",
-            i + 1,
-            subtitle.language_code()
-        ));
+        command
+            .args(["-map", &format!("{}", i + 1)])
+            .args([
+                format!("-metadata:s:s:{}", i),
+                format!("language={}", subtitle.language_code()),
+            ])
+            .args([&format!("-c:s:{}", i), "mov_text"]);
     }
 
-    let status = command.status()?;
+    command.arg(&output_file);
 
-    if !status.success() {
-        return Err(
-            Error::SubtitleError(format!("Running ffmpeg failed with status: {}", status)).into(),
-        );
+    let args: Vec<String> = command
+        .get_args()
+        .map(|arg| format!("\"{}\"", arg.to_string_lossy()))
+        .collect();
+    debug!("Running ffmpeg command: ffmpeg {}", args.join(" "));
+
+    let output = command.output()?;
+
+    if !output.status.success() {
+        // Convert stdout and stderr to strings
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Log the error outputs
+        error!("ffmpeg stdout: {}", stdout);
+        error!("ffmpeg stderr: {}", stderr);
+
+        return Err(Error::SubtitleError(format!(
+            "Running ffmpeg failed with status: {}",
+            output.status
+        ))
+        .into());
+    } else {
+        trace!("ffmpeg stdout: {}", String::from_utf8_lossy(&output.stdout));
+        trace!("ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
     }
+
+    // Remove the old file and rename the new one
+    std::fs::remove_file(&video_file)
+        .map_err(|e| Error::io_error("Failed to remove old video file", e))?;
+    std::fs::rename(&output_file, &video_file)?;
 
     Ok(())
 }

@@ -4,7 +4,8 @@ use cat_show_downloader::{
     models::*, subtitles_fix,
 };
 use clap::Parser;
-use std::sync::Arc;
+use tracing::info;
+use std::{path::PathBuf, sync::Arc};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -54,6 +55,8 @@ async fn main() {
 async fn inner_main() -> Result<()> {
     let args = Args::parse();
 
+    let directory = PathBuf::from(&args.directory);
+
     // Create build directory if it doesn't exist
     std::fs::create_dir_all(&args.directory)
         .map_err(|e| Error::IoError(format!("Failed to create directory {}", args.directory), e))?;
@@ -67,16 +70,16 @@ async fn inner_main() -> Result<()> {
 
     for episode in episodes.iter_mut() {
         if episode.episode_number < args.start_from_episode {
-            println!("Skipping episode {}", episode.episode_number);
+            info!("Skipping episode {}", episode.episode_number);
             continue;
         }
 
-        println!(
+        info!(
             "Downloading episode {} of {}: {}",
             episode.episode_number, episodes_count, episode.title
         );
         downloader::download_episode(episode, &args.directory).await?;
-        subtitles_fix::fix_subtitles(episode, &args.directory)?;
+        subtitles_fix::fix_subtitles(episode, &directory)?;
         break;
     }
 

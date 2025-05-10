@@ -1,10 +1,12 @@
 use crate::error::Error;
 use anyhow::Result;
 use regex::Regex;
+use tracing::{info, trace};
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
 
 pub async fn get_tv_show_id(slug: &str) -> Result<i32, Error> {
+    info!("Getting tv show information for slug: {}", slug);
     let response = reqwest::get(TV3_TV_SHOW_API_URL.replace("{slug}", slug).as_str())
         .await
         .map_err(|e| {
@@ -19,6 +21,7 @@ pub async fn get_tv_show_id(slug: &str) -> Result<i32, Error> {
             e
         ))
     })?;
+    trace!("HTML content: {}", html_content);
     let re = Regex::new(r"programatv_id=(\d+)").unwrap();
 
     let matches: Vec<_> = re.captures_iter(&html_content).collect();
