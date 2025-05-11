@@ -14,12 +14,12 @@ use tracing::{debug, error, info, trace, warn};
 
 static REGEX_SUBTITLE_FIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^Region:").unwrap());
 
-pub fn fix_subtitles(episode: &Episode, directory: &Path) -> Result<()> {
+pub fn fix_subtitles(episode: &Episode, directory: &Path, keep_all_files: bool) -> Result<()> {
     let paths = get_subtitles_pats(episode, directory)?;
 
     let subtitles: Vec<Subtitle> = paths
         .into_iter()
-        .filter_map(|path| match clean_and_build_subtitle(path) {
+        .filter_map(|path| match clean_and_build_subtitle(path, keep_all_files) {
             Ok(subtitle) => Some(subtitle),
             Err(e) => {
                 warn!(%e);
@@ -32,13 +32,13 @@ pub fn fix_subtitles(episode: &Episode, directory: &Path) -> Result<()> {
         info!("Subtitle language code: {}", subtitle.language_code());
     }
 
-    add_subtitles_to_video_file(episode, directory, &subtitles)
+    add_subtitles_to_video_file(episode, directory, &subtitles, keep_all_files)
 }
 
 fn get_subtitles_pats(episode: &Episode, directory: &Path) -> Result<Vec<PathBuf>> {
     // Find all files with "name.<language>.vtt" in the directory and that do not contain
     // "fixed.vtt"
-    let pattern = format!("{}.*.vtt", episode.base_filename());
+    let pattern = format!("{}.orig.*.vtt", episode.base_filename());
     let paths_results: Vec<Result<PathBuf, GlobError>> = glob::glob(&format!(
         "{}/{}",
         directory
@@ -78,7 +78,7 @@ fn get_subtitles_pats(episode: &Episode, directory: &Path) -> Result<Vec<PathBuf
     Ok(paths)
 }
 
-fn clean_and_build_subtitle(path: PathBuf) -> Result<Subtitle> {
+fn clean_and_build_subtitle(path: PathBuf, keep_all_files: bool) -> Result<Subtitle> {
     // Open the file and remove all lines starting with "Region:" and save the
     // file as "name.fixed.vtt"
     let file = std::fs::File::open(&path)
@@ -98,7 +98,15 @@ fn clean_and_build_subtitle(path: PathBuf) -> Result<Subtitle> {
         })
         .collect();
     let cleaned_content = cleaned_lines.join("\n");
-    let new_path = path.with_extension("fixed.vtt");
+
+    // Replace .orig with .fixed in the filename
+    let new_filename = path
+        .file_name()
+        .ok_or(Error::OsStringError(path.as_os_str().into()))?
+        .to_string_lossy()
+        .replace(".orig", ".fixed");
+
+    let new_path = path.with_file_name(new_filename);
     std::fs::write(&new_path, cleaned_content)
         .map_err(|e| Error::io_error("Failed to write cleaned subtitle file", e))?;
 
@@ -109,6 +117,12 @@ fn clean_and_build_subtitle(path: PathBuf) -> Result<Subtitle> {
         subtitle.path().display()
     );
 
+    if !keep_all_files {
+        // Remove the old file
+        std::fs::remove_file(&path)
+            .map_err(|e| Error::io_error("Failed to remove old subtitle file", e))?;
+    }
+
     Ok(subtitle)
 }
 
@@ -116,6 +130,7 @@ fn add_subtitles_to_video_file(
     episode: &Episode,
     directory: &Path,
     subtitles: &[Subtitle],
+    keep_all_files: bool,
 ) -> Result<()> {
     // Use ffmpeg to add subtitles to the video file
     let video_file = episode.original_video_path(directory);
@@ -131,7 +146,7 @@ fn add_subtitles_to_video_file(
 
     command
         .args(["-map", "0:v", "-map", "0:a"])
-        .args(["-c", "copy"]);
+        .args(["-c:a", "copy", "-c:v", "copy"]);
 
     for (i, subtitle) in subtitles.iter().enumerate() {
         command
@@ -172,10 +187,11 @@ fn add_subtitles_to_video_file(
         trace!("ffmpeg stderr: {}", String::from_utf8_lossy(&output.stderr));
     }
 
-    // Remove the old file and rename the new one
-    std::fs::remove_file(&video_file)
-        .map_err(|e| Error::io_error("Failed to remove old video file", e))?;
-    std::fs::rename(&output_file, &video_file)?;
+    if !keep_all_files {
+        // Remove the old video file
+        std::fs::remove_file(&video_file)
+            .map_err(|e| Error::io_error("Failed to remove old video file", e))?;
+    }
 
     Ok(())
 }

@@ -11,7 +11,7 @@ use crate::utils::error::Error;
 
 static REGEX_CLEANER: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9A-Z\s-]").unwrap());
 static REGEX_SUBTITLE_LANGUAGE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\.([a-z]+)\.fixed.vtt$").unwrap());
+    Lazy::new(|| Regex::new(r"\.fixed\.([a-z]+)\.vtt$").unwrap());
 
 #[derive(Debug)]
 pub struct Episode {

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use cat_show_downloader::{downloader::download_all_episodes, utils::error::Error};
 use clap::Parser;
-use tracing::info;
 use std::path::PathBuf;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -20,7 +20,7 @@ struct Args {
     start_from_episode: i32,
 
     #[arg(long, default_value_t = false)]
-    keep_all_files: bool
+    keep_all_files: bool,
 }
 
 #[tokio::main]
@@ -51,11 +51,20 @@ async fn inner_main() -> Result<()> {
     let args = Args::parse();
     let directory = PathBuf::from(&args.directory);
 
-    info!("Started 3Cat show downloader for show {}", args.tv_show_slug);
+    info!(
+        "Started 3Cat show downloader for show {}",
+        args.tv_show_slug
+    );
 
     // Create build directory if it doesn't exist
     std::fs::create_dir_all(&directory)
         .map_err(|e| Error::IoError(format!("Failed to create directory {}", args.directory), e))?;
 
-    download_all_episodes(args.start_from_episode, &args.tv_show_slug, &directory).await
+    download_all_episodes(
+        args.start_from_episode,
+        &args.tv_show_slug,
+        &directory,
+        args.keep_all_files,
+    )
+    .await
 }
