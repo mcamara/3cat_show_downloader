@@ -15,6 +15,12 @@ use tracing::{debug, error, info, trace, warn};
 static REGEX_SUBTITLE_FIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^Region:").unwrap());
 
 pub fn fix_subtitles(episode: &Episode, directory: &Path, keep_all_files: bool) -> Result<()> {
+    let fixed_video_path = episode.fixed_video_path(directory);
+    if fixed_video_path.exists() {
+        info!("Fixed video file already exists: {}", fixed_video_path.display());
+        return Ok(());
+    }
+    
     let paths = get_subtitles_pats(episode, directory)?;
 
     let subtitles: Vec<Subtitle> = paths
