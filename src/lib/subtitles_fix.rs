@@ -19,13 +19,15 @@ pub fn fix_subtitles(episode: &Episode, directory: &Path, keep_all_files: bool) 
 
     let subtitles: Vec<Subtitle> = paths
         .into_iter()
-        .filter_map(|path| match clean_and_build_subtitle(path, keep_all_files) {
-            Ok(subtitle) => Some(subtitle),
-            Err(e) => {
-                warn!(%e);
-                None
-            }
-        })
+        .filter_map(
+            |path| match clean_and_build_subtitle(path, keep_all_files) {
+                Ok(subtitle) => Some(subtitle),
+                Err(e) => {
+                    warn!(%e);
+                    None
+                }
+            },
+        )
         .collect();
 
     for subtitle in subtitles.iter() {
@@ -136,6 +138,11 @@ fn add_subtitles_to_video_file(
     let video_file = episode.original_video_path(directory);
     let output_file = episode.fixed_video_path(directory);
 
+    info!(
+        "Adding subtitles to video file: {}",
+        output_file.to_string_lossy()
+    );
+
     let mut command = std::process::Command::new("ffmpeg");
     command.arg("-y").arg("-i").arg(video_file.as_os_str());
 
@@ -192,6 +199,8 @@ fn add_subtitles_to_video_file(
         std::fs::remove_file(&video_file)
             .map_err(|e| Error::io_error("Failed to remove old video file", e))?;
     }
+
+    info!("Finished adding subtitles to video file");
 
     Ok(())
 }

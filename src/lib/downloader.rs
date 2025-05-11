@@ -33,15 +33,23 @@ pub async fn download_all_episodes(
 }
 
 pub async fn download_episode(episode: &Episode, directory: &Path) -> Result<()> {
-    let video_path = episode.original_video_path(directory);
-    debug!("Video path: {}", video_path.to_string_lossy());
-    if video_path.exists() {
+    let original_video_path = episode.original_video_path(directory);
+    let fixed_video_path = episode.fixed_video_path(directory);
+    debug!(
+        "Video path: {} -> {}",
+        original_video_path.to_string_lossy(),
+        fixed_video_path.to_string_lossy()
+    );
+    if original_video_path.exists() || fixed_video_path.exists() {
         info!("Episode {} already exists", episode.base_filename());
         return Ok(());
     }
 
     download_video_ytdlp(episode, directory)?;
-    info!("Downloaded video to {}", video_path.to_string_lossy());
+    info!(
+        "Downloaded video to {}",
+        original_video_path.to_string_lossy()
+    );
     Ok(())
 }
 
