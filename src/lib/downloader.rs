@@ -15,7 +15,7 @@ pub async fn download_all_episodes(
     let episodes = get_episodes_from_slug(tv_show_slug).await?;
     let episodes_count = episodes.len();
 
-    for episode in episodes {
+    for (i, episode) in episodes.iter().enumerate() {
         if episode.episode_number < episode_start {
             info!("Skipping episode {}", episode.episode_number);
             continue;
@@ -23,7 +23,7 @@ pub async fn download_all_episodes(
 
         info!(
             "Downloading episode {} of {}: {}",
-            episode.episode_number, episodes_count, episode.title
+            i + 1, episodes_count, episode.title
         );
 
         downloader::download_episode(&episode, directory).await?;
