@@ -13,6 +13,11 @@ pub async fn download_all_episodes(
     keep_all_files: bool,
 ) -> Result<()> {
     let episodes = get_episodes_from_slug(tv_show_slug).await?;
+    // Print episodes as JSON
+    let episodes_json = serde_json::to_string_pretty(&episodes)?;
+    debug!("Episodes: {:?}", episodes_json);
+    return Ok(());
+    
     let episodes_count = episodes.len();
 
     for (i, episode) in episodes.iter().enumerate() {

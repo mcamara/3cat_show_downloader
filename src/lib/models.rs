@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::Serialize;
 use tracing::debug;
 use unidecode::unidecode;
 
@@ -13,13 +14,15 @@ static REGEX_CLEANER: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9A-Z\s-]").
 static REGEX_SUBTITLE_LANGUAGE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\.fixed\.([a-z]+)\.vtt$").unwrap());
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Episode {
     pub title: String,
     pub video_url: String,
     pub episode_number: i32,
     pub season_number: i32,
     pub tv_show_name: String,
+
+    #[serde(skip)]
     cached_filename: OnceCell<String>,
 }
 
