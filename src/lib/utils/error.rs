@@ -19,6 +19,8 @@ pub enum Error {
     SubtitleError(String),
     #[error("Failed to convert OsString to String: {0:?}")]
     OsStringError(std::ffi::OsString),
+    #[error("Missing required dependencies")]
+    MissingDependencies,
 }
 
 impl Error {

@@ -1,6 +1,7 @@
 use anyhow::Result;
 use cat_show_downloader::{
-    downloader::download_all_episodes, models::SeasonSelection, utils::error::Error,
+    check_requirements, downloader::download_all_episodes, models::SeasonSelection,
+    utils::error::Error,
 };
 use clap::Parser;
 use std::path::PathBuf;
@@ -66,6 +67,10 @@ async fn inner_main() -> Result<()> {
         "Started 3Cat show downloader for show {}",
         args.tv_show_slug
     );
+
+    if !check_requirements() {
+        return Err(Error::MissingDependencies.into());
+    }
 
     // Create build directory if it doesn't exist
     std::fs::create_dir_all(&directory)

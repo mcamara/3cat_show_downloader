@@ -41,6 +41,7 @@ tokio = { version = "1", features = ["full", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 unidecode = "0"
+which = { version = "7.0.3", features = ["tracing"] }
 
 [dev-dependencies]
 anyhow = "1.0"
