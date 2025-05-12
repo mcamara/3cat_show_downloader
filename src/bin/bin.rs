@@ -33,16 +33,35 @@ struct Args {
     /// If set, all the original files and the intermediate files will be kept
     #[arg(short = 'k', long, default_value_t = false)]
     keep_all_files: bool,
+
+    /// Increase the verbosity level
+    #[arg(short = 'v', long, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 #[tokio::main]
 async fn main() {
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(e) => {
+            println!("Error parsing arguments: {}", e);
+            println!("Use --help to see the available options.");
+            std::process::exit(1);
+        }
+    };
+
+    let filter_level = match args.verbose {
+        0 => "info",
+        1 => "debug",
+        _ => "trace",
+    };
+
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .or_else(|e| {
                     println!("Using default log filter directive: {}", e);
-                    tracing_subscriber::EnvFilter::try_new("info")
+                    tracing_subscriber::EnvFilter::try_new(filter_level)
                 })
                 .unwrap(),
         )
@@ -53,14 +72,13 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     tracing::info!("Starting TV3 downloader");
-    if let Err(e) = inner_main().await {
+    if let Err(e) = inner_main(args).await {
         tracing::error!("Error: {}\n{}", e, e.backtrace());
         std::process::exit(1);
     }
 }
 
-async fn inner_main() -> Result<()> {
-    let args = Args::parse();
+async fn inner_main(args: Args) -> Result<()> {
     let directory = PathBuf::from(&args.directory);
 
     info!(
