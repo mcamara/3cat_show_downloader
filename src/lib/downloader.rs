@@ -1,5 +1,5 @@
 use crate::{
-    downloader, info_3cat::get_episodes_from_slug, models::Episode, subtitles_fix,
+    downloader, info_3cat::get_episodes_from_slug, models::{Episode, SeasonSelection}, subtitles_fix,
     utils::error::Error,
 };
 use anyhow::{Ok, Result};
@@ -7,16 +7,16 @@ use std::{path::Path, process::Command};
 use tracing::{debug, info};
 
 pub async fn download_all_episodes(
+    selected_seasons: SeasonSelection,
     episode_start: i32,
     tv_show_slug: &str,
     directory: &Path,
     keep_all_files: bool,
 ) -> Result<()> {
-    let episodes = get_episodes_from_slug(tv_show_slug).await?;
+    let episodes = get_episodes_from_slug(tv_show_slug, &selected_seasons).await?;
     // Print episodes as JSON
     let episodes_json = serde_json::to_string_pretty(&episodes)?;
-    debug!("Episodes: {:?}", episodes_json);
-    return Ok(());
+    debug!("Episodes: {}", episodes_json);
     
     let episodes_count = episodes.len();
 

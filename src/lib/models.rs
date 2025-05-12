@@ -137,6 +137,30 @@ impl Subtitle {
     }
 }
 
+#[derive(Debug)]
+pub struct SeasonSelection {
+    pub start: i32,
+    pub end: i32,
+}
+
+impl IntoIterator for SeasonSelection {
+    type Item = i32;
+    type IntoIter = std::ops::RangeInclusive<i32>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (self.start..=self.end).into_iter()
+    }
+}
+
+impl IntoIterator for &SeasonSelection {
+    type Item = i32;
+    type IntoIter = std::ops::RangeInclusive<i32>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (self.start..=self.end).into_iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

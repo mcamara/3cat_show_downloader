@@ -1,5 +1,7 @@
 use anyhow::Result;
-use cat_show_downloader::{downloader::download_all_episodes, utils::error::Error};
+use cat_show_downloader::{
+    downloader::download_all_episodes, models::SeasonSelection, utils::error::Error,
+};
 use clap::Parser;
 use std::path::PathBuf;
 use tracing::info;
@@ -8,18 +10,27 @@ use tracing::info;
 #[command(version, about, long_about = None)]
 struct Args {
     /// Slug of the TV show, for https://www.3cat.cat/3cat/bola-de-drac/ should be bola-de-drac
-    #[arg(short, long)]
+    #[arg(required = true)]
     tv_show_slug: String,
 
     /// Directory to save the episodes
-    #[arg(short, long)]
+    #[arg(short = 'd', long, default_value = "output")]
     directory: String,
 
-    /// Episode number to start from, default to the first one
-    #[arg(short, long, default_value_t = 1)]
+    /// Episode number to start from
+    #[arg(long, default_value_t = 1)]
     start_from_episode: i32,
 
-    #[arg(long, default_value_t = false)]
+    /// Season number to start from
+    #[arg(long, default_value_t = 1)]
+    start_from_season: i32,
+
+    /// Season number to end at inclusive
+    #[arg(long, default_value_t = 10)]
+    end_at_season: i32,
+
+    /// If set, all the original files and the intermediate files will be kept
+    #[arg(short = 'k', long, default_value_t = false)]
     keep_all_files: bool,
 }
 
@@ -61,6 +72,10 @@ async fn inner_main() -> Result<()> {
         .map_err(|e| Error::IoError(format!("Failed to create directory {}", args.directory), e))?;
 
     download_all_episodes(
+        SeasonSelection {
+            start: args.start_from_season,
+            end: args.end_at_season,
+        },
         args.start_from_episode,
         &args.tv_show_slug,
         &directory,

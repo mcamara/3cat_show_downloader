@@ -31,8 +31,10 @@ pub struct Tv3Episode {
     pub id: i32,
     #[serde(rename = "capitol")]
     pub number_of_episode: i32,
-    #[serde(rename = "permatitle")]
+    #[serde(rename = "titol")]
     pub title: String,
+    #[serde(rename = "permatitle")]
+    pub perma_title: String,
     #[serde(rename = "programa")]
     pub tv_show_name: String,
 }

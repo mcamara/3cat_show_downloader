@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use crate::{
     http_client::{http_client, HttpClientTrait},
-    models::Episode,
+    models::{Episode, SeasonSelection},
     utils::error::Error,
 };
 use anyhow::Result;
 use regex::Regex;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
 const TV3_SINGLE_EPISODE_PAGE_URL: &str = "https://www.3cat.cat/3cat/t/video/{id}/";
@@ -48,27 +48,34 @@ pub async fn get_tv_show_id(slug: &str) -> Result<i32, Error> {
     ))
 }
 
-pub async fn get_episodes_from_slug(tv_show_slug: &str) -> Result<Vec<Episode>> {
+pub async fn get_episodes_from_slug(
+    tv_show_slug: &str,
+    selected_seasons: &SeasonSelection,
+) -> Result<Vec<Episode>> {
     let http_client = http_client();
     let id = get_tv_show_id(tv_show_slug).await?;
 
-    get_episodes_from_id(&http_client, id).await
+    get_episodes_from_id(&http_client, id, selected_seasons).await
 }
 
-async fn get_episodes_from_id<T>(http_client: &Arc<T>, tv_show_id: i32) -> Result<Vec<Episode>>
+async fn get_episodes_from_id<T>(
+    http_client: &Arc<T>,
+    tv_show_id: i32,
+    selected_seasons: &SeasonSelection,
+) -> Result<Vec<Episode>>
 where
     T: HttpClientTrait,
 {
+    debug!("Selecting seasons: {:?}", selected_seasons);
+
     let mut episodes: Vec<Episode> = vec![];
-    for season_number in 1..10 {
+    for season_number in selected_seasons {
+        let query_url = TV3_EPISODE_LIST_URL
+            .replace("{tv_show_id}", &tv_show_id.to_string())
+            .replace("{season_number}", &season_number.to_string());
+        debug!("Querying URL: {}", query_url);
         let tv3_tv_show_api_response = http_client
-            .get::<api_structs::EpisodesRoot, api_structs::Tv3Error>(
-                TV3_EPISODE_LIST_URL
-                    .replace("{tv_show_id}", &tv_show_id.to_string())
-                    .replace("{season_number}", &season_number.to_string())
-                    .as_str(),
-                None,
-            )
+            .get::<api_structs::EpisodesRoot, api_structs::Tv3Error>(&query_url, None)
             .await
             .map_err(Error::EpisodeRetrieveError)?;
 
