@@ -81,27 +81,30 @@ where
     T: HttpClientTrait,
 {
     let mut episodes: Vec<Episode> = vec![];
-    for season_number in 1..10 {
+    for season_number in 1..20 {
+        let url = TV3_EPISODE_LIST_URL
+            .replace("{tv_show_id}", &tv_show_id.to_string())
+            .replace("{season_number}", &season_number.to_string());
         let tv3_tv_show_api_response = http_client
-            .get::<api_structs::EpisodesRoot, api_structs::Tv3Error>(
-                TV3_EPISODE_LIST_URL
-                    .replace("{tv_show_id}", &tv_show_id.to_string())
-                    .replace("{season_number}", &season_number.to_string())
-                    .as_str(),
-                None,
-            )
+            .get::<api_structs::EpisodesRoot, api_structs::Tv3Error>(&url, None)
             .await
             .map_err(|e| Error::DecodingError(e.to_string()))?;
 
         let season_episodes = tv3_tv_show_api_response.response.items.item;
         if season_episodes.is_empty() {
-            break;
+            continue;
         }
 
         for item in season_episodes {
+            let title = if item.title.clone().unwrap_or_default().is_empty() {
+                item.permatitle
+            } else {
+                item.title.unwrap_or_default()
+            };
+
             episodes.push(Episode {
                 id: item.id,
-                title: item.title,
+                title,
                 video_url: None,
                 subtitle_url: None,
                 episode_number: item.number_of_episode,

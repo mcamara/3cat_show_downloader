@@ -8,14 +8,12 @@ pub async fn get_tv_show_id(slug: &str) -> Result<i32> {
         .await
         .map_err(|e| {
             Error::TvShowIdRetrievalError(format!(
-                "Error getting tv show id: {} (is the tv show slug correct?)",
-                e
+                "Error getting tv show id: {e} (is the tv show slug correct?)"
             ))
         })?;
     let html_content = response.text().await.map_err(|e| {
         Error::TvShowIdRetrievalError(format!(
-            "Error getting tv show id: {} (is the tv show slug correct?)",
-            e
+            "Error getting tv show id: {e} (is the tv show slug correct?)"
         ))
     })?;
     let re = Regex::new(r"programatv_id=(\d+)").unwrap();
