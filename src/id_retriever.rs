@@ -1,12 +1,14 @@
 //! Retrieves the internal TV show ID from a 3cat show page.
 
 use regex::Regex;
+use tracing::instrument;
 
 use crate::error::{Error, Result};
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
 
 /// Fetches the HTML page for the given show slug and extracts the `programatv_id`.
+#[instrument]
 pub async fn get_tv_show_id(slug: &str) -> Result<i32> {
     let response = reqwest::get(TV3_TV_SHOW_API_URL.replace("{slug}", slug).as_str())
         .await

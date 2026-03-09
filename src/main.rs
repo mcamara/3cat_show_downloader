@@ -9,7 +9,7 @@ mod id_retriever;
 mod models;
 
 use clap::Parser;
-use tracing::info;
+use tracing::{info, instrument};
 
 use error::Error;
 use http_client::HttpClientTrait;
@@ -48,6 +48,7 @@ fn main() -> anyhow::Result<()> {
         .block_on(run())
 }
 
+#[instrument(skip_all)]
 async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
 

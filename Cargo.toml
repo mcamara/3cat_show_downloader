@@ -21,6 +21,7 @@ version = "0.0.4"
 [lints.rust]
 missing_docs = "warn"
 missing_debug_implementations = "warn"
+rust_2024_compatibility = "warn"
 
 [dependencies]
 anyhow = "1.0"
@@ -33,7 +34,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["full", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-unidecode = "0"
+unidecode = "~0.3"
 
 [dev-dependencies]
 

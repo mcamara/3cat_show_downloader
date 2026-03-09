@@ -5,6 +5,7 @@ use std::sync::{Arc, OnceLock};
 
 use reqwest::{Client, Response};
 use serde::de::DeserializeOwned;
+use tracing::instrument;
 
 mod error;
 pub use error::Error;
@@ -55,6 +56,7 @@ impl HttpClientTrait for HttpClient {
         }
     }
 
+    #[instrument(skip(self, headers))]
     async fn get<T, S>(
         &self,
         url: &str,
@@ -72,6 +74,7 @@ impl HttpClientTrait for HttpClient {
         self.format_response(response.send().await?).await
     }
 
+    #[instrument(skip_all)]
     async fn format_response<T, S>(&self, response: Response) -> Result<T, Error<S>>
     where
         T: DeserializeOwned,

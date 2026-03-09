@@ -2,7 +2,7 @@
 
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::error::{Error, Result};
 use crate::models::Episode;
@@ -14,6 +14,7 @@ use crate::models::Episode;
 /// # Errors
 ///
 /// Returns an error if downloading, file I/O, or path encoding fails.
+#[instrument(skip_all, fields(episode_number = episode.episode_number))]
 pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> {
     if check_if_episode_exists(episode, directory).await? {
         info!("Episode {} already exists", episode.filename("mp4")?);
@@ -23,6 +24,7 @@ pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> 
     download_data(episode, directory).await
 }
 
+#[instrument(skip_all)]
 async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
     let Some(video_url) = &episode.video_url else {
         return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
@@ -41,6 +43,7 @@ async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip_all)]
 async fn check_if_episode_exists(episode: &Episode, directory: &str) -> Result<bool> {
     let video_path = full_episode_path(episode, directory, "mp4")?;
     let tmp_path = format!("{video_path}.tmp");
@@ -71,6 +74,7 @@ fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Res
         .ok_or_else(|| Error::InvalidPathEncoding(format!("{}", path.display())))
 }
 
+#[instrument(skip_all, fields(url, path))]
 async fn download_content(url: &str, path: &str) -> Result<()> {
     let tmp_path = format!("{path}.tmp");
 
@@ -88,6 +92,7 @@ async fn download_content(url: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip_all, fields(url, path))]
 async fn download_to_file(url: &str, path: &str) -> Result<()> {
     let response = reqwest::get(url)
         .await

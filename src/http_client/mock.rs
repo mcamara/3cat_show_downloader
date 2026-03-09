@@ -3,16 +3,15 @@
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
 
-use reqwest::{Client, Response};
+use reqwest::Response;
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use super::{Error, HttpClientTrait};
 
 /// A mock HTTP client that returns pre-configured responses.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MockHttpClient {
-    _client: Client,
     responses: Arc<Mutex<Vec<String>>>,
 }
 
@@ -21,7 +20,6 @@ impl MockHttpClient {
     pub fn new(responses: Vec<&str>) -> Self {
         let responses = responses.into_iter().map(|s| s.to_string()).collect();
         MockHttpClient {
-            _client: Client::new(),
             responses: Mutex::new(responses).into(),
         }
     }
