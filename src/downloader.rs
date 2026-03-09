@@ -1,5 +1,6 @@
 //! Download logic for episode video and subtitle files.
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tracing::{info, instrument};
@@ -30,13 +31,15 @@ async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
         return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
     };
 
+    let video_filename = episode.filename("mp4")?;
     let video_path = full_episode_path(episode, directory, "mp4")?;
-    download_content(video_url, &video_path).await?;
+    download_content(video_url, &video_path, &video_filename).await?;
     info!("Downloaded video to {video_path}");
 
     if let Some(subtitle_url) = &episode.subtitle_url {
+        let subtitle_filename = episode.filename("vtt")?;
         let subtitle_path = full_episode_path(episode, directory, "vtt")?;
-        download_content(subtitle_url, &subtitle_path).await?;
+        download_content(subtitle_url, &subtitle_path, &subtitle_filename).await?;
         info!("Downloaded subtitle to {subtitle_path}");
     }
 
@@ -75,10 +78,10 @@ fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Res
 }
 
 #[instrument(skip_all, fields(url, path))]
-async fn download_content(url: &str, path: &str) -> Result<()> {
+async fn download_content(url: &str, path: &str, label: &str) -> Result<()> {
     let tmp_path = format!("{path}.tmp");
 
-    let result = download_to_file(url, &tmp_path).await;
+    let result = download_to_file(url, &tmp_path, label).await;
 
     if result.is_err() {
         let _ = tokio::fs::remove_file(&tmp_path).await;
@@ -92,9 +95,34 @@ async fn download_content(url: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Creates a styled progress bar for download tracking.
+fn create_progress_bar(total_size: u64, label: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{msg}\n[{bar:40.cyan/blue}] {percent}% ({bytes}/{total_bytes}) {bytes_per_sec} ETA {eta}",
+        )
+        .expect("valid progress bar template")
+        .progress_chars("█░░"),
+    );
+    pb.set_message(format!("Downloading {label}"));
+    pb
+}
+
+/// Creates a spinner-style progress bar when total size is unknown.
+fn create_spinner(label: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::with_template("{msg} {spinner:.cyan} ({bytes}) {bytes_per_sec}")
+            .expect("valid spinner template"),
+    );
+    pb.set_message(format!("Downloading {label}"));
+    pb
+}
+
 #[instrument(skip_all, fields(url, path))]
-async fn download_to_file(url: &str, path: &str) -> Result<()> {
-    let response = reqwest::get(url)
+async fn download_to_file(url: &str, path: &str, label: &str) -> Result<()> {
+    let mut response = reqwest::get(url)
         .await
         .map_err(|e| Error::Downloading(e.to_string()))?;
 
@@ -102,14 +130,25 @@ async fn download_to_file(url: &str, path: &str) -> Result<()> {
         .await
         .map_err(|e| Error::Downloading(e.to_string()))?;
 
-    let content = response
-        .bytes()
-        .await
-        .map_err(|e| Error::Downloading(e.to_string()))?;
+    let pb = match response.content_length() {
+        Some(total) => create_progress_bar(total, label),
+        None => create_spinner(label),
+    };
 
-    file.write_all(&content)
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|e| Error::Downloading(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?
+    {
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| Error::Downloading(e.to_string()))?;
+        downloaded += chunk.len() as u64;
+        pb.set_position(downloaded);
+    }
+
+    pb.finish_and_clear();
 
     Ok(())
 }

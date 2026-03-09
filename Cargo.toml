@@ -15,7 +15,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"
-version = "0.0.4"
+version = "0.1"
 
 
 [lints.rust]
@@ -27,7 +27,8 @@ rust_2024_compatibility = "warn"
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 regex = "1.7.1"
-reqwest = { version = "0.12", default-features=false, features = ["json", "rustls-tls"] }
+indicatif = "0.18"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2"
