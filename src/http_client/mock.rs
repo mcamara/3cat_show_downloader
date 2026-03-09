@@ -1,15 +1,15 @@
-use std::{
-    fmt::{Debug, Display},
-    sync::Arc,
-};
+//! Mock HTTP client for testing.
 
-use async_trait::async_trait;
+use std::fmt::{Debug, Display};
+use std::sync::Arc;
+
 use reqwest::{Client, Response};
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use super::{Error, HttpClientTrait};
 
+/// A mock HTTP client that returns pre-configured responses.
 #[derive(Clone)]
 pub struct MockHttpClient {
     _client: Client,
@@ -17,6 +17,7 @@ pub struct MockHttpClient {
 }
 
 impl MockHttpClient {
+    /// Creates a new mock client with the given canned responses.
     pub fn new(responses: Vec<&str>) -> Self {
         let responses = responses.into_iter().map(|s| s.to_string()).collect();
         MockHttpClient {
@@ -26,7 +27,6 @@ impl MockHttpClient {
     }
 }
 
-#[async_trait]
 impl HttpClientTrait for MockHttpClient {
     fn new() -> Self {
         MockHttpClient::new(vec![])

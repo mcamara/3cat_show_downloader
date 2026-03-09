@@ -9,9 +9,10 @@ mod id_retriever;
 mod models;
 
 use clap::Parser;
+use tracing::info;
+
 use error::Error;
 use http_client::HttpClientTrait;
-use tracing::info;
 
 /// Command-line arguments for the cat show downloader.
 #[derive(Parser, Debug)]

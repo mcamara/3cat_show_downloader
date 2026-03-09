@@ -1,5 +1,8 @@
-use serde::Deserialize;
+//! Serde deserialization structs for the 3cat API responses.
+
 use std::fmt::Display;
+
+use serde::Deserialize;
 
 // Developer note: 3cat API is a mess, a lot of data is nested in different places
 

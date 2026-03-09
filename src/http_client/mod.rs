@@ -1,42 +1,53 @@
-use async_trait::async_trait;
-use reqwest::{Client, Response};
-use serde::de::DeserializeOwned;
+//! HTTP client abstraction with trait-based design for testability.
+
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, OnceLock};
+
+use reqwest::{Client, Response};
+use serde::de::DeserializeOwned;
 
 mod error;
 pub use error::Error;
 #[cfg(test)]
 pub mod mock;
 
+/// A wrapper around `reqwest::Client`.
 #[derive(Clone, Debug)]
 pub struct HttpClient {
     client: Client,
 }
 
-#[async_trait]
+/// Trait for HTTP client operations, enabling mock implementations in tests.
 pub trait HttpClientTrait {
+    /// Creates a new instance of the HTTP client.
     fn new() -> Self;
-    async fn get<T, S>(
+
+    /// Performs a GET request and deserializes the response.
+    fn get<T, S>(
         &self,
         url: &str,
         headers: Option<(reqwest::header::HeaderName, &str)>,
-    ) -> Result<T, Error<S>>
+    ) -> impl Future<Output = Result<T, Error<S>>>
     where
         T: DeserializeOwned,
         S: DeserializeOwned + Debug + Display;
-    async fn format_response<T, S>(&self, response: Response) -> Result<T, Error<S>>
+
+    /// Parses an HTTP response into the expected type or an error type.
+    fn format_response<T, S>(
+        &self,
+        response: Response,
+    ) -> impl Future<Output = Result<T, Error<S>>>
     where
         T: DeserializeOwned,
         S: DeserializeOwned + Debug + Display;
 }
 
+/// Returns a shared singleton `HttpClient` instance.
 pub fn http_client() -> Arc<HttpClient> {
     static INSTANCE: OnceLock<Arc<HttpClient>> = OnceLock::new();
     INSTANCE.get_or_init(|| Arc::new(HttpClient::new())).clone()
 }
 
-#[async_trait]
 impl HttpClientTrait for HttpClient {
     fn new() -> Self {
         HttpClient {

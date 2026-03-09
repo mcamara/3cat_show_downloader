@@ -1,7 +1,8 @@
 //! HTTP client error types.
 
-use serde::de::DeserializeOwned;
 use std::fmt::{Debug, Display};
+
+use serde::de::DeserializeOwned;
 
 /// Errors that can occur during HTTP client operations.
 #[derive(Debug, thiserror::Error)]

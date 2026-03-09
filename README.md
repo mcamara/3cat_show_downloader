@@ -45,7 +45,6 @@ Si tens algun problema, pots crear una issue a [GitHub](https://github.com/mcama
 - Escollir si descarregar o no els subtítols.
 - Descarregues en paral·lel per millorar la velocitat.
 - Testejar/Mockejar l'API de TV3 per a més fiabilitat.
-- Millorar la gestió d'errors, com per exemple mostrar missatges més clars en cas de fallada de xarxa.
 
 ### Nota personal
 

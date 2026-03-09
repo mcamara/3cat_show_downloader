@@ -1,11 +1,11 @@
+//! Fetches the episode list for a TV show from the 3cat API.
+
 use std::sync::Arc;
 
-use crate::{
-    api_structs,
-    error::{Error, Result},
-    http_client::HttpClientTrait,
-    models::Episode,
-};
+use crate::api_structs;
+use crate::error::{Error, Result};
+use crate::http_client::HttpClientTrait;
+use crate::models::Episode;
 
 const TV3_EPISODE_LIST_URL: &str = "https://www.3cat.cat/api/3cat/dades/?queryKey=%5B%22tira%22%2C%7B%22url%22%3A%22%2F%2Fapi.3cat.cat%2Fvideos%3F_format%3Djson%26no_agrupacio%3DPUAGR_LLSIGN%26tipus_contingut%3DPPD%26items_pagina%3D1500%26pagina%3D1%26sdom%3Dimg%26version%3D2.0%26cache%3D180%26https%3Dtrue%26master%3Dyes%26programatv_id%3D{tv_show_id}%26origen%3Dauto%26perfil%3Dpc%22%7D%5D";
 

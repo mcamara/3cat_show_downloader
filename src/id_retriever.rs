@@ -1,7 +1,8 @@
 //! Retrieves the internal TV show ID from a 3cat show page.
 
-use crate::error::{Error, Result};
 use regex::Regex;
+
+use crate::error::{Error, Result};
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
 

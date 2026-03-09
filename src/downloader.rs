@@ -1,12 +1,11 @@
 //! Download logic for episode video and subtitle files.
 
-use crate::{
-    error::{Error, Result},
-    models::Episode,
-};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tracing::info;
+
+use crate::error::{Error, Result};
+use crate::models::Episode;
 
 /// Downloads the video and subtitle files for an episode to the given directory.
 ///
