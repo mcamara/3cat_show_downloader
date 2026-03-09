@@ -1,13 +1,23 @@
+//! Download logic for episode video and subtitle files.
+
 use crate::{
-    Episode,
     error::{Error, Result},
+    models::Episode,
 };
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tracing::info;
 
+/// Downloads the video and subtitle files for an episode to the given directory.
+///
+/// Skips the download if the episode file already exists and is non-empty.
+///
+/// # Errors
+///
+/// Returns an error if downloading, file I/O, or path encoding fails.
 pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> {
-    if check_if_episode_exists(episode, directory).await {
-        println!("Episode {} already exists", episode.filename("mp4"));
+    if check_if_episode_exists(episode, directory).await? {
+        info!("Episode {} already exists", episode.filename("mp4")?);
         return Ok(());
     }
 
@@ -16,24 +26,24 @@ pub async fn download_episode(episode: &Episode, directory: &str) -> Result<()> 
 
 async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
     let Some(video_url) = &episode.video_url else {
-        return Err(Error::EpisodeDoNotHaveVideoUrl(episode.filename("mp4")));
+        return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
     };
 
-    let video_path = full_episode_path(episode, directory, "mp4");
+    let video_path = full_episode_path(episode, directory, "mp4")?;
     download_content(video_url, &video_path).await?;
-    println!("Downloaded video to {video_path}");
+    info!("Downloaded video to {video_path}");
 
     if let Some(subtitle_url) = &episode.subtitle_url {
-        let subtitle_path = full_episode_path(episode, directory, "vtt");
+        let subtitle_path = full_episode_path(episode, directory, "vtt")?;
         download_content(subtitle_url, &subtitle_path).await?;
-        println!("Downloaded subtitle to {subtitle_path}");
+        info!("Downloaded subtitle to {subtitle_path}");
     }
 
     Ok(())
 }
 
-async fn check_if_episode_exists(episode: &Episode, directory: &str) -> bool {
-    let video_path = full_episode_path(episode, directory, "mp4");
+async fn check_if_episode_exists(episode: &Episode, directory: &str) -> Result<bool> {
+    let video_path = full_episode_path(episode, directory, "mp4")?;
     let tmp_path = format!("{video_path}.tmp");
 
     // Clean up stale .tmp files from previous interrupted runs
@@ -41,26 +51,25 @@ async fn check_if_episode_exists(episode: &Episode, directory: &str) -> bool {
 
     let path = std::path::Path::new(&video_path);
     if !path.exists() {
-        return false;
+        return Ok(false);
     }
 
     // Clean up 0-byte files left by previous failed downloads
     if let Ok(metadata) = path.metadata() {
         if metadata.len() == 0 {
             let _ = tokio::fs::remove_file(&video_path).await;
-            return false;
+            return Ok(false);
         }
     }
 
-    true
+    Ok(true)
 }
 
-fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> String {
-    std::path::Path::new(directory)
-        .join(episode.filename(extension))
-        .to_str()
-        .unwrap()
-        .to_string()
+fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Result<String> {
+    let path = std::path::Path::new(directory).join(episode.filename(extension)?);
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| Error::InvalidPathEncoding(format!("{}", path.display())))
 }
 
 async fn download_content(url: &str, path: &str) -> Result<()> {
@@ -75,7 +84,7 @@ async fn download_content(url: &str, path: &str) -> Result<()> {
 
     tokio::fs::rename(&tmp_path, path)
         .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?;
 
     Ok(())
 }
@@ -83,20 +92,20 @@ async fn download_content(url: &str, path: &str) -> Result<()> {
 async fn download_to_file(url: &str, path: &str) -> Result<()> {
     let response = reqwest::get(url)
         .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?;
 
     let mut file = File::create(path)
         .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?;
 
     let content = response
         .bytes()
         .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?;
 
     file.write_all(&content)
         .await
-        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+        .map_err(|e| Error::Downloading(e.to_string()))?;
 
     Ok(())
 }

@@ -6,6 +6,7 @@ use std::sync::{Arc, OnceLock};
 
 mod error;
 pub use error::Error;
+#[cfg(test)]
 pub mod mock;
 
 #[derive(Clone, Debug)]
@@ -67,13 +68,10 @@ impl HttpClientTrait for HttpClient {
     {
         if !response.status().is_success() {
             let response = response.json::<S>().await?;
-            return Err(Error::RequestError(response));
+            return Err(Error::Request(response));
         }
 
-        let response = response
-            .json::<T>()
-            .await
-            .map_err(Error::RequestBodyReadError)?;
+        let response = response.json::<T>().await.map_err(Error::RequestBodyRead)?;
         Ok(response)
     }
 }

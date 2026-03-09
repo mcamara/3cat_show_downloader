@@ -1,3 +1,5 @@
+//! CLI tool to download complete TV shows from 3cat.cat.
+
 mod api_structs;
 mod downloader;
 mod episodes;
@@ -7,10 +9,11 @@ mod id_retriever;
 mod models;
 
 use clap::Parser;
-use error::{Error, Result};
+use error::Error;
 use http_client::HttpClientTrait;
-use models::*;
+use tracing::info;
 
+/// Command-line arguments for the cat show downloader.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -30,8 +33,21 @@ struct Args {
 const TV3_SINGLE_EPISODE_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let http_client = http_client::http_client();
@@ -41,7 +57,7 @@ async fn main() -> Result<()> {
 
     for episode in episodes.iter_mut() {
         if episode.episode_number < args.start_from_episode {
-            println!("Skipping episode {}", episode.episode_number);
+            info!("Skipping episode {}", episode.episode_number);
             continue;
         }
 
@@ -53,7 +69,7 @@ async fn main() -> Result<()> {
                 None,
             )
             .await
-            .map_err(|e| Error::DecodingError(e.to_string()))?;
+            .map_err(|e| Error::Decoding(e.to_string()))?;
 
         for url in tv3_tv_show_api_response.media.url {
             if !url.active {

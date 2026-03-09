@@ -15,22 +15,28 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"
-version = "0.0.3"
+version = "0.0.4"
 
+
+[lints.rust]
+missing_docs = "warn"
+missing_debug_implementations = "warn"
 
 [dependencies]
+anyhow = "1.0"
 async-trait = "0.1.74"
 clap = { version = "4", features = ["derive"] }
 regex = "1.7.1"
 reqwest = { version = "0.12", default-features=false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+thiserror = "2"
 tokio = { version = "1", features = ["full", "sync"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unidecode = "0"
 
 [dev-dependencies]
-anyhow = "1.0"
 
 [package.metadata.release]
 tag-name = "v{{version}}"

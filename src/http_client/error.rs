@@ -1,35 +1,25 @@
-#![allow(dead_code)]
+//! HTTP client error types.
 
 use serde::de::DeserializeOwned;
 use std::fmt::{Debug, Display};
 
-#[derive(Debug)]
+/// Errors that can occur during HTTP client operations.
+#[derive(Debug, thiserror::Error)]
 pub enum Error<S: DeserializeOwned + Debug + Display> {
-    RequestError(S),
-    RequestBodyReadError(reqwest::Error),
+    /// The remote server returned an error response.
+    #[error("request error: {0}")]
+    Request(S),
+
+    /// Failed to read the response body.
+    #[error("request body read error: {0}")]
+    RequestBodyRead(#[source] reqwest::Error),
 }
 
-// region: --- Froms
 impl<S> From<reqwest::Error> for Error<S>
 where
     S: DeserializeOwned + Debug + Display,
 {
     fn from(ex: reqwest::Error) -> Self {
-        Error::RequestBodyReadError(ex)
+        Error::RequestBodyRead(ex)
     }
 }
-// endregion: --- Froms
-
-// region: -- Error Boilerplate
-
-impl<S> core::fmt::Display for Error<S>
-where
-    S: DeserializeOwned + Debug + Display,
-{
-    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        write!(fmt, "{self:?}")
-    }
-}
-
-impl<S> std::error::Error for Error<S> where S: DeserializeOwned + Debug + Display {}
-// endregion: -- Error Boilerplate
