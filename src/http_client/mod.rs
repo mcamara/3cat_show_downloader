@@ -18,6 +18,14 @@ pub struct HttpClient {
     client: Client,
 }
 
+impl HttpClient {
+    /// Returns a reference to the underlying [`reqwest::Client`] for direct use
+    /// (e.g., streaming downloads that don't need JSON deserialization).
+    pub fn inner(&self) -> &Client {
+        &self.client
+    }
+}
+
 /// Trait for HTTP client operations, enabling mock implementations in tests.
 pub trait HttpClientTrait {
     /// Creates a new instance of the HTTP client.

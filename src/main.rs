@@ -7,12 +7,14 @@ mod error;
 mod http_client;
 mod id_retriever;
 mod models;
+mod scheduler;
+
+use std::io;
 
 use clap::Parser;
+use indicatif::MultiProgress;
 use tracing::{info, instrument};
-
-use error::Error;
-use http_client::HttpClientTrait;
+use tracing_subscriber::fmt::MakeWriter;
 
 /// Command-line arguments for the cat show downloader.
 #[derive(Parser, Debug)]
@@ -29,64 +31,121 @@ struct Args {
     /// Episode number to start from, default to the first one
     #[arg(short, long, default_value_t = 1)]
     start_from_episode: i32,
+
+    /// Number of episodes to download concurrently (1-10)
+    #[arg(short, long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=10))]
+    concurrent_downloads: u8,
 }
 
-const TV3_SINGLE_EPISODE_API_URL: &str =
-    "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
+/// A [`MakeWriter`] implementation that routes output through [`MultiProgress::println`].
+///
+/// This ensures that tracing log lines are printed above the progress bars
+/// without disrupting their rendering.
+#[derive(Clone, Debug)]
+struct MultiProgressWriter {
+    mp: MultiProgress,
+}
+
+/// Per-event writer that buffers bytes and flushes complete lines via [`MultiProgress::println`].
+#[derive(Debug)]
+struct MultiProgressLineWriter {
+    mp: MultiProgress,
+    buf: Vec<u8>,
+}
+
+impl<'a> MakeWriter<'a> for MultiProgressWriter {
+    type Writer = MultiProgressLineWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        MultiProgressLineWriter {
+            mp: self.mp.clone(),
+            buf: Vec::new(),
+        }
+    }
+}
+
+impl io::Write for MultiProgressLineWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buf.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.buf.is_empty() {
+            let line = String::from_utf8_lossy(&self.buf).trim_end().to_string();
+            self.mp.println(&line)?;
+            self.buf.clear();
+        }
+        Ok(())
+    }
+}
+
+impl Drop for MultiProgressLineWriter {
+    fn drop(&mut self) {
+        let _ = io::Write::flush(self);
+    }
+}
 
 fn main() -> anyhow::Result<()> {
+    let multi_progress = MultiProgress::new();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
+        .with_writer(MultiProgressWriter {
+            mp: multi_progress.clone(),
+        })
         .init();
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(run())
+        .block_on(run(multi_progress))
 }
 
+#[allow(clippy::let_and_return)] // Binding needed to satisfy Rust 2024 tail-expression drop order rules
 #[instrument(skip_all)]
-async fn run() -> anyhow::Result<()> {
+async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
     let args = Args::parse();
 
     let http_client = http_client::http_client();
     let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
 
-    let mut episodes = episodes::get_episodes(&http_client, id).await?;
+    let episodes = episodes::get_episodes(&http_client, id).await?;
 
-    for episode in episodes.iter_mut() {
-        if episode.episode_number < args.start_from_episode {
-            info!("Skipping episode {}", episode.episode_number);
-            continue;
-        }
-
-        let tv3_tv_show_api_response = http_client
-            .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
-                TV3_SINGLE_EPISODE_API_URL
-                    .replace("{id}", &episode.id.to_string())
-                    .as_str(),
-                None,
-            )
-            .await
-            .map_err(|e| Error::Decoding(e.to_string()))?;
-
-        for url in tv3_tv_show_api_response.media.url {
-            if !url.active {
-                continue;
+    let episodes_to_download: Vec<_> = episodes
+        .into_iter()
+        .filter(|ep| {
+            if ep.episode_number < args.start_from_episode {
+                info!("Skipping episode {}", ep.episode_number);
+                false
+            } else {
+                true
             }
-            episode.video_url = Some(url.file);
-            break;
-        }
+        })
+        .collect();
 
-        if let Some(subtitles) = tv3_tv_show_api_response.subtitles.first() {
-            episode.subtitle_url = Some(subtitles.url.clone());
-        }
-
-        downloader::download_episode(episode, &args.directory).await?;
+    if episodes_to_download.is_empty() {
+        info!("No episodes to download");
+        return Ok(());
     }
 
-    Ok(())
+    info!(
+        "Downloading {} episodes ({} at a time)",
+        episodes_to_download.len(),
+        args.concurrent_downloads,
+    );
+
+    let result = scheduler::download_all(
+        episodes_to_download,
+        args.concurrent_downloads,
+        &http_client,
+        &args.directory,
+        &multi_progress,
+    )
+    .await;
+
+    result
 }

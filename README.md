@@ -24,6 +24,21 @@ Descarrega el binari des de [releases](https://github.com/mcamara/3cat_show_down
 ./cat_show_downloader --tv-show-slug bola-de-drac --directory ~/Downloads/bola-de-drac/
 ```
 
+### Opcions
+
+| Opció | Curt | Descripció | Per defecte |
+|---|---|---|---|
+| `--tv-show-slug` | `-t` | Slug de la sèrie (veure més avall) | *obligatori* |
+| `--directory` | `-d` | Directori on desar els capítols | *obligatori* |
+| `--start-from-episode` | `-s` | Número de capítol des del qual començar | `1` |
+| `--concurrent-downloads` | `-c` | Número de capítols a descarregar alhora (1-10) | `2` |
+
+Per exemple, per descarregar 4 capítols alhora:
+
+```bash
+./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ -c 4
+```
+
 ### Com trobar el "slug" de la sèrie?
 
 El "slug" és el nom de la sèrie en minúscules i sense espais. Si tens la URL de la pàgina de la sèrie, el "slug" és la part que apareix després de `/3cat/` i abans del següent `/` (si és de 3cat.cat). En el cas de Súper3 o 3xl, el "slug" apareix després de `/tc3/sx3/` i abans del següent `/`.
@@ -43,7 +58,6 @@ Si tens algun problema, pots crear una issue a [GitHub](https://github.com/mcama
 ### Coses que potser millori en algun moment
 
 - Escollir si descarregar o no els subtítols.
-- Descarregues en paral·lel per millorar la velocitat.
 - Testejar/Mockejar l'API de TV3 per a més fiabilitat.
 
 ### Nota personal
