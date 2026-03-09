@@ -34,7 +34,25 @@ async fn download_data(episode: &Episode, directory: &str) -> Result<()> {
 
 async fn check_if_episode_exists(episode: &Episode, directory: &str) -> bool {
     let video_path = full_episode_path(episode, directory, "mp4");
-    std::path::Path::new(&video_path).exists()
+    let tmp_path = format!("{video_path}.tmp");
+
+    // Clean up stale .tmp files from previous interrupted runs
+    let _ = tokio::fs::remove_file(&tmp_path).await;
+
+    let path = std::path::Path::new(&video_path);
+    if !path.exists() {
+        return false;
+    }
+
+    // Clean up 0-byte files left by previous failed downloads
+    if let Ok(metadata) = path.metadata() {
+        if metadata.len() == 0 {
+            let _ = tokio::fs::remove_file(&video_path).await;
+            return false;
+        }
+    }
+
+    true
 }
 
 fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> String {
@@ -46,6 +64,23 @@ fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Str
 }
 
 async fn download_content(url: &str, path: &str) -> Result<()> {
+    let tmp_path = format!("{path}.tmp");
+
+    let result = download_to_file(url, &tmp_path).await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return result;
+    }
+
+    tokio::fs::rename(&tmp_path, path)
+        .await
+        .map_err(|e| Error::DownloadingError(e.to_string()))?;
+
+    Ok(())
+}
+
+async fn download_to_file(url: &str, path: &str) -> Result<()> {
     let response = reqwest::get(url)
         .await
         .map_err(|e| Error::DownloadingError(e.to_string()))?;
