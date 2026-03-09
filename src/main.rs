@@ -1,5 +1,6 @@
 mod api_structs;
 mod downloader;
+mod episodes;
 mod error;
 mod http_client;
 mod id_retriever;
@@ -9,7 +10,6 @@ use clap::Parser;
 use error::{Error, Result};
 use http_client::HttpClientTrait;
 use models::*;
-use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -30,8 +30,6 @@ struct Args {
 const TV3_SINGLE_EPISODE_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
-const TV3_EPISODE_LIST_URL: &str = "https://www.3cat.cat/api/3cat/dades/?queryKey=%5B%22tira%22%2C%7B%22url%22%3A%22https%3A%2F%2Fapi.3cat.cat%2Fvideos%3F_format%3Djson%26ordre%3Dcapitol%26origen%3Dllistat%26perfil%3Dpc%26programatv_id%3D{tv_show_id}%26tipus_contingut%3DPPD%26items_pagina%3D1000%26pagina%3D1%26sdom%3Dimg%26version%3D2.0%26cache%3D180%26temporada%3DPUTEMP_{season_number}%26https%3Dtrue%26master%3Dyes%26perfils_extra%3Dimatges_minim_master%22%2C%22moduleName%22%3A%22BlocDeContinguts%22%7D%5D";
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -39,7 +37,7 @@ async fn main() -> Result<()> {
     let http_client = http_client::http_client();
     let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
 
-    let mut episodes = get_episodes(&http_client, id).await?;
+    let mut episodes = episodes::get_episodes(&http_client, id).await?;
 
     for episode in episodes.iter_mut() {
         if episode.episode_number < args.start_from_episode {
@@ -73,44 +71,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-async fn get_episodes<T>(http_client: &Arc<T>, tv_show_id: i32) -> Result<Vec<Episode>>
-where
-    T: HttpClientTrait,
-{
-    let mut episodes: Vec<Episode> = vec![];
-    for season_number in 1..20 {
-        let url = TV3_EPISODE_LIST_URL
-            .replace("{tv_show_id}", &tv_show_id.to_string())
-            .replace("{season_number}", &season_number.to_string());
-        let tv3_tv_show_api_response = http_client
-            .get::<api_structs::EpisodesRoot, api_structs::Tv3Error>(&url, None)
-            .await
-            .map_err(|e| Error::DecodingError(e.to_string()))?;
-
-        let season_episodes = tv3_tv_show_api_response.response.items.item;
-        if season_episodes.is_empty() {
-            continue;
-        }
-
-        for item in season_episodes {
-            let title = if item.title.clone().unwrap_or_default().is_empty() {
-                item.permatitle
-            } else {
-                item.title.unwrap_or_default()
-            };
-
-            episodes.push(Episode {
-                id: item.id,
-                title,
-                video_url: None,
-                subtitle_url: None,
-                episode_number: item.number_of_episode,
-                tv_show_name: item.tv_show_name,
-            });
-        }
-    }
-
-    Ok(episodes)
 }
