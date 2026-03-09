@@ -11,7 +11,7 @@ version.workspace = true
 
 [workspace.package]
 authors = ["Marc Cámara <marc.camara@icloud.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"

@@ -30,8 +30,7 @@ struct Args {
 const TV3_SINGLE_EPISODE_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
-const TV3_EPISODE_LIST_URL: &str =
-"https://www.3cat.cat/api/3cat/dades/?queryKey=%5B%22tira%22%2C%7B%22url%22%3A%22https%3A%2F%2Fapi.3cat.cat%2Fvideos%3F_format%3Djson%26ordre%3Dcapitol%26origen%3Dllistat%26perfil%3Dpc%26programatv_id%3D{tv_show_id}%26tipus_contingut%3DPPD%26items_pagina%3D1000%26pagina%3D1%26sdom%3Dimg%26version%3D2.0%26cache%3D180%26temporada%3DPUTEMP_{season_number}%26https%3Dtrue%26master%3Dyes%26perfils_extra%3Dimatges_minim_master%22%2C%22moduleName%22%3A%22BlocDeContinguts%22%7D%5D";
+const TV3_EPISODE_LIST_URL: &str = "https://www.3cat.cat/api/3cat/dades/?queryKey=%5B%22tira%22%2C%7B%22url%22%3A%22https%3A%2F%2Fapi.3cat.cat%2Fvideos%3F_format%3Djson%26ordre%3Dcapitol%26origen%3Dllistat%26perfil%3Dpc%26programatv_id%3D{tv_show_id}%26tipus_contingut%3DPPD%26items_pagina%3D1000%26pagina%3D1%26sdom%3Dimg%26version%3D2.0%26cache%3D180%26temporada%3DPUTEMP_{season_number}%26https%3Dtrue%26master%3Dyes%26perfils_extra%3Dimatges_minim_master%22%2C%22moduleName%22%3A%22BlocDeContinguts%22%7D%5D";
 
 #[tokio::main]
 async fn main() -> Result<()> {

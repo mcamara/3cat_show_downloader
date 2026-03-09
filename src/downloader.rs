@@ -1,6 +1,6 @@
 use crate::{
-    error::{Error, Result},
     Episode,
+    error::{Error, Result},
 };
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
