@@ -45,4 +45,8 @@ pub enum Error {
     /// An error occurred while cleaning a subtitle file.
     #[error("subtitle cleaning error: {0}")]
     SubtitleCleaning(String),
+
+    /// An error occurred while running ffmpeg.
+    #[error("ffmpeg error: {0}")]
+    Ffmpeg(String),
 }

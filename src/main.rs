@@ -4,6 +4,7 @@ mod api_structs;
 mod downloader;
 mod episodes;
 mod error;
+mod ffmpeg;
 mod http_client;
 mod id_retriever;
 mod models;
@@ -14,8 +15,10 @@ use std::io;
 
 use clap::Parser;
 use indicatif::MultiProgress;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 use tracing_subscriber::fmt::MakeWriter;
+
+use crate::models::SubtitleMode;
 
 /// Command-line arguments for the cat show downloader.
 #[derive(Parser, Debug)]
@@ -44,6 +47,10 @@ struct Args {
     /// Fix (clean) previously downloaded subtitle files in the directory
     #[arg(short, long, default_value_t = false)]
     fix_existing_subtitles: bool,
+
+    /// Clean and embed existing subtitle files into their matching video files (requires ffmpeg)
+    #[arg(long, default_value_t = false)]
+    embed_existing_subtitles: bool,
 }
 
 /// A [`MakeWriter`] implementation that routes output through [`MultiProgress::println`].
@@ -119,6 +126,17 @@ fn main() -> anyhow::Result<()> {
 async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
     let args = Args::parse();
 
+    let ffmpeg_available = ffmpeg::is_available().await;
+
+    if args.embed_existing_subtitles {
+        if !ffmpeg_available {
+            anyhow::bail!(
+                "--embed-existing-subtitles requires ffmpeg, but ffmpeg was not found on PATH"
+            );
+        }
+        ffmpeg::embed_existing_subtitles(&args.directory).await?;
+    }
+
     let http_client = http_client::http_client();
     let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
 
@@ -145,6 +163,16 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let subtitle_mode = if args.skip_subtitles {
+        SubtitleMode::Skip
+    } else if ffmpeg_available {
+        info!("ffmpeg detected, subtitles will be embedded into video files");
+        SubtitleMode::Embed
+    } else {
+        warn!("ffmpeg not found, subtitles will be downloaded as separate .vtt files");
+        SubtitleMode::Download
+    };
+
     info!(
         "Downloading {} episodes ({} at a time)",
         episodes_to_download.len(),
@@ -157,7 +185,7 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
         &http_client,
         &args.directory,
         &multi_progress,
-        args.skip_subtitles,
+        subtitle_mode,
     )
     .await;
 

@@ -1,9 +1,20 @@
-//! Episode model and filename generation.
+//! Episode model, subtitle handling mode, and filename generation.
 
 use regex::Regex;
 use unidecode::unidecode;
 
 use crate::error::Result;
+
+/// Controls how subtitles are handled during episode downloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubtitleMode {
+    /// Do not download subtitles at all.
+    Skip,
+    /// Download subtitles as separate `.vtt` files.
+    Download,
+    /// Download subtitles and embed them into the video file via ffmpeg.
+    Embed,
+}
 
 /// Represents a single TV show episode with its metadata.
 #[derive(Debug)]

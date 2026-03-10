@@ -12,7 +12,7 @@ use tokio::task::JoinSet;
 use crate::downloader;
 use crate::error::Error;
 use crate::http_client::HttpClient;
-use crate::models::Episode;
+use crate::models::{Episode, SubtitleMode};
 
 /// Downloads all given episodes concurrently, up to `max_concurrent` at a time.
 ///
@@ -32,7 +32,7 @@ pub async fn download_all(
     http_client: &Arc<HttpClient>,
     directory: &str,
     multi_progress: &MultiProgress,
-    skip_subtitles: bool,
+    subtitle_mode: SubtitleMode,
 ) -> anyhow::Result<()> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent.into()));
     let reqwest_client = http_client.inner().clone();
@@ -59,7 +59,7 @@ pub async fn download_all(
                 &mp,
                 &client,
                 &dir,
-                skip_subtitles,
+                subtitle_mode,
             )
             .await
         });

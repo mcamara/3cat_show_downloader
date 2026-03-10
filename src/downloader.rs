@@ -6,12 +6,13 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::api_structs;
 use crate::error::{Error, Result};
+use crate::ffmpeg;
 use crate::http_client::{HttpClient, HttpClientTrait};
-use crate::models::Episode;
+use crate::models::{Episode, SubtitleMode};
 use crate::subtitle_cleaner;
 
 const TV3_SINGLE_EPISODE_API_URL: &str =
@@ -22,7 +23,8 @@ const TV3_SINGLE_EPISODE_API_URL: &str =
 /// Retrieves the video URL and subtitles from the 3cat API, then streams
 /// the files to the given directory using the shared [`Client`] for
 /// connection pooling and the [`MultiProgress`] for concurrent progress bars.
-/// When `skip_subtitles` is `true`, subtitle downloading is skipped entirely.
+/// The [`SubtitleMode`] controls whether subtitles are skipped, downloaded
+/// as separate files, or embedded into the video via ffmpeg.
 ///
 /// # Errors
 ///
@@ -33,7 +35,7 @@ pub async fn fetch_and_download_episode(
     multi_progress: &MultiProgress,
     client: &Client,
     directory: &str,
-    skip_subtitles: bool,
+    subtitle_mode: SubtitleMode,
 ) -> Result<()> {
     let tv3_tv_show_api_response = http_client
         .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
@@ -57,7 +59,7 @@ pub async fn fetch_and_download_episode(
         episode.subtitle_url = Some(subtitles.url.clone());
     }
 
-    download_episode(&episode, directory, multi_progress, client, skip_subtitles).await
+    download_episode(&episode, directory, multi_progress, client, subtitle_mode).await
 }
 
 /// Downloads the video and subtitle files for an episode to the given directory.
@@ -75,14 +77,14 @@ async fn download_episode(
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
-    skip_subtitles: bool,
+    subtitle_mode: SubtitleMode,
 ) -> Result<()> {
     if check_if_episode_exists(episode, directory).await? {
         info!("Episode {} already exists", episode.filename("mp4")?);
         return Ok(());
     }
 
-    download_data(episode, directory, multi_progress, client, skip_subtitles).await
+    download_data(episode, directory, multi_progress, client, subtitle_mode).await
 }
 
 #[instrument(skip_all)]
@@ -91,7 +93,7 @@ async fn download_data(
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
-    skip_subtitles: bool,
+    subtitle_mode: SubtitleMode,
 ) -> Result<()> {
     let Some(video_url) = &episode.video_url else {
         return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
@@ -109,7 +111,7 @@ async fn download_data(
     .await?;
     info!("Downloaded video to {video_path}");
 
-    if skip_subtitles {
+    if subtitle_mode == SubtitleMode::Skip {
         return Ok(());
     }
 
@@ -124,9 +126,22 @@ async fn download_data(
             client,
         )
         .await?;
-        info!("Downloaded subtitle to {subtitle_path}");
 
         subtitle_cleaner::clean_vtt_file(std::path::Path::new(&subtitle_path))?;
+
+        if subtitle_mode == SubtitleMode::Embed {
+            match ffmpeg::embed_subtitles(&video_path, &subtitle_path).await {
+                Ok(mkv_path) => {
+                    info!("Subtitles embedded into video {mkv_path}");
+                }
+                Err(e) => {
+                    warn!("Failed to embed subtitles into {video_path}: {e}");
+                    info!("Downloaded subtitle to {subtitle_path}");
+                }
+            }
+        } else {
+            info!("Downloaded subtitle to {subtitle_path}");
+        }
     }
 
     Ok(())
@@ -135,25 +150,40 @@ async fn download_data(
 #[instrument(skip_all)]
 async fn check_if_episode_exists(episode: &Episode, directory: &str) -> Result<bool> {
     let video_path = full_episode_path(episode, directory, "mp4")?;
+    let mkv_path = full_episode_path(episode, directory, "mkv")?;
     let tmp_path = format!("{video_path}.tmp");
 
     // Clean up stale .tmp files from previous interrupted runs
     let _ = tokio::fs::remove_file(&tmp_path).await;
 
-    let path = std::path::Path::new(&video_path);
-    if !path.exists() {
+    // Check for .mkv first (previously embedded with subtitles)
+    if non_empty_file_exists(&mkv_path) {
+        return Ok(true);
+    }
+
+    if !non_empty_file_exists(&video_path) {
         return Ok(false);
     }
 
-    // Clean up 0-byte files left by previous failed downloads
-    if let Ok(metadata) = path.metadata() {
+    Ok(true)
+}
+
+/// Returns `true` when `path` exists and has a non-zero size.
+///
+/// Zero-byte files left by previous failed downloads are cleaned up
+/// and treated as non-existent.
+fn non_empty_file_exists(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    if !p.exists() {
+        return false;
+    }
+    if let Ok(metadata) = p.metadata() {
         if metadata.len() == 0 {
-            let _ = tokio::fs::remove_file(&video_path).await;
-            return Ok(false);
+            let _ = std::fs::remove_file(p);
+            return false;
         }
     }
-
-    Ok(true)
+    true
 }
 
 fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Result<String> {

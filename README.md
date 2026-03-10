@@ -34,6 +34,7 @@ Descarrega el binari des de [releases](https://github.com/mcamara/3cat_show_down
 | `--concurrent-downloads` | `-c` | Número de capítols a descarregar alhora (1-10) | `2` |
 | `--skip-subtitles` | | No descarregar els subtítols | `false` |
 | `--fix-existing-subtitles` | `-f` | Netejar els fitxers de subtítols (.vtt) ja descarregats al directori | `false` |
+| `--embed-existing-subtitles` | | Netejar i incrustar els subtítols als vídeos ja descarregats (requereix ffmpeg) | `false` |
 
 Per exemple, per descarregar 4 capítols alhora:
 
@@ -52,6 +53,20 @@ Per netejar els subtítols ja descarregats (elimina les capçaleres `Region:` no
 ```bash
 ./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ -f
 ```
+
+Per netejar i incrustar els subtítols existents directament als fitxers de vídeo (requereix ffmpeg instal·lat):
+
+```bash
+./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ --embed-existing-subtitles
+```
+
+### Integració amb ffmpeg
+
+Si tens [ffmpeg](https://ffmpeg.org/) instal·lat i accessible al PATH del sistema, els subtítols s'incrustaran automàticament als fitxers de vídeo durant la descàrrega. Els subtítols VTT es converteixen a format ASS (Advanced SubStation Alpha) per preservar l'estil original (colors, fons, etc.) i s'incrusten en un fitxer `.mkv` (Matroska) en lloc de `.mp4`. Els fitxers `.vtt` s'eliminen automàticament un cop incrustats.
+
+Si ffmpeg no està instal·lat, els subtítols es descarregaran com a fitxers `.vtt` separats i el vídeo es mantindrà com a `.mp4` (el comportament original).
+
+L'opció `--embed-existing-subtitles` permet incrustar els subtítols als vídeos que ja s'han descarregat prèviament. Aquesta opció també neteja els subtítols (igual que `--fix-existing-subtitles`) abans d'incrustar-los. Un cop incrustats, els fitxers `.vtt` i `.mp4` originals s'eliminen i es genera un fitxer `.mkv`. Aquesta opció requereix que ffmpeg estigui instal·lat.
 
 ### Com trobar el "slug" de la sèrie?
 
