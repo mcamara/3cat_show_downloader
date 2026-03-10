@@ -1,9 +1,12 @@
 name: Create Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Tests"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -14,8 +17,42 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  release:
-    name: Release - ${{ matrix.platform.os_name }}
+  check-version:
+    name: Check version and create tag
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag: ${{ steps.get_version.outputs.tag }}
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep -A20 '\[workspace.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: ${VERSION}, tag: ${TAG}"
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.get_version.outputs.tag }}" | grep -q .; then
+            echo "Tag ${{ steps.get_version.outputs.tag }} already exists, skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${{ steps.get_version.outputs.tag }} does not exist, proceeding with release"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build - ${{ matrix.platform.os_name }}
+    needs: check-version
+    if: ${{ needs.check-version.outputs.should_release == 'true' }}
     strategy:
       matrix:
         platform:
@@ -35,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - name: Build executable
         uses: houseabsolute/actions-rust-cross@v1
         with:
@@ -42,9 +81,57 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: "--locked --release"
           strip: true
-      - name: Publish artifacts and release
+      - name: Package archive
         uses: houseabsolute/actions-rust-release@v1
         with:
           executable-name: cat_show_downloader
           target: ${{ matrix.platform.target }}
           changes-file: "CHANGELOG.md"
+
+  publish:
+    name: Create GitHub Release
+    needs: [check-version, build]
+    if: ${{ needs.check-version.outputs.should_release == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.check-version.outputs.tag }}" "${{ github.event.workflow_run.head_sha }}"
+          git push origin "${{ needs.check-version.outputs.tag }}"
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        run: |
+          # Collect all release files from artifact directories
+          FILES=()
+          for dir in artifacts/*/; do
+            for file in "$dir"*; do
+              FILES+=("$file")
+            done
+          done
+
+          # Extract release notes from CHANGELOG.md if it exists
+          NOTES=""
+          if [ -f CHANGELOG.md ]; then
+            NOTES=$(sed -n '/^## /,/^## /{/^## /!p;}' CHANGELOG.md | head -50)
+          fi
+
+          if [ -n "$NOTES" ]; then
+            gh release create "${{ needs.check-version.outputs.tag }}" \
+              --title "${{ needs.check-version.outputs.tag }}" \
+              --notes "$NOTES" \
+              "${FILES[@]}"
+          else
+            gh release create "${{ needs.check-version.outputs.tag }}" \
+              --title "${{ needs.check-version.outputs.tag }}" \
+              --generate-notes \
+              "${FILES[@]}"
+          fi
