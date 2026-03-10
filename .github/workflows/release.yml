@@ -3,19 +3,63 @@ name: Create Release
 on:
   workflow_run:
     workflows: ["Tests"]
-    permissions:
-      contents: write
-  release:
-    types: [created]
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 env:
-  CRATE_NAME: cat-downloader
+  CRATE_NAME: cat_show_downloader
   GITHUB_TOKEN: ${{ github.token }}
   RUST_BACKTRACE: 1
 
 jobs:
+  check-version:
+    name: Check version and create tag
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag: ${{ steps.get_version.outputs.tag }}
+      should_release: ${{ steps.check_tag.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep -A20 '\[workspace.package\]' Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: ${VERSION}, tag: ${TAG}"
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.get_version.outputs.tag }}" | grep -q .; then
+            echo "Tag ${{ steps.get_version.outputs.tag }} already exists, skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${{ steps.get_version.outputs.tag }} does not exist, proceeding with release"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create and push tag
+        if: ${{ steps.check_tag.outputs.should_release == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.get_version.outputs.tag }}" "${{ github.event.workflow_run.head_sha }}"
+          git push origin "${{ steps.get_version.outputs.tag }}"
+
   release:
     name: Release - ${{ matrix.platform.os_name }}
+    needs: check-version
+    if: ${{ needs.check-version.outputs.should_release == 'true' }}
     strategy:
       matrix:
         platform:
@@ -35,6 +79,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
       - name: Build executable
         uses: houseabsolute/actions-rust-cross@v1
         with:
