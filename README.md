@@ -32,11 +32,25 @@ Descarrega el binari des de [releases](https://github.com/mcamara/3cat_show_down
 | `--directory` | `-d` | Directori on desar els capítols | *obligatori* |
 | `--start-from-episode` | `-s` | Número de capítol des del qual començar | `1` |
 | `--concurrent-downloads` | `-c` | Número de capítols a descarregar alhora (1-10) | `2` |
+| `--skip-subtitles` | | No descarregar els subtítols | `false` |
+| `--fix-existing-subtitles` | `-f` | Netejar els fitxers de subtítols (.vtt) ja descarregats al directori | `false` |
 
 Per exemple, per descarregar 4 capítols alhora:
 
 ```bash
 ./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ -c 4
+```
+
+Per descarregar sense subtítols:
+
+```bash
+./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ --skip-subtitles
+```
+
+Per netejar els subtítols ja descarregats (elimina les capçaleres `Region:` no estàndard i els atributs `region:rN` de les línies de temps):
+
+```bash
+./cat_show_downloader -t bola-de-drac -d ~/Downloads/bola-de-drac/ -f
 ```
 
 ### Com trobar el "slug" de la sèrie?
@@ -57,7 +71,6 @@ Si tens algun problema, pots crear una issue a [GitHub](https://github.com/mcama
 
 ### Coses que potser millori en algun moment
 
-- Escollir si descarregar o no els subtítols.
 - Testejar/Mockejar l'API de TV3 per a més fiabilitat.
 
 ### Nota personal

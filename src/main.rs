@@ -8,6 +8,7 @@ mod http_client;
 mod id_retriever;
 mod models;
 mod scheduler;
+pub mod subtitle_cleaner;
 
 use std::io;
 
@@ -35,6 +36,14 @@ struct Args {
     /// Number of episodes to download concurrently (1-10)
     #[arg(short, long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=10))]
     concurrent_downloads: u8,
+
+    /// Skip downloading subtitles
+    #[arg(long, default_value_t = false)]
+    skip_subtitles: bool,
+
+    /// Fix (clean) previously downloaded subtitle files in the directory
+    #[arg(short, long, default_value_t = false)]
+    fix_existing_subtitles: bool,
 }
 
 /// A [`MakeWriter`] implementation that routes output through [`MultiProgress::println`].
@@ -113,6 +122,10 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
     let http_client = http_client::http_client();
     let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
 
+    if args.fix_existing_subtitles {
+        subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
+    }
+
     let episodes = episodes::get_episodes(&http_client, id).await?;
 
     let episodes_to_download: Vec<_> = episodes
@@ -144,6 +157,7 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
         &http_client,
         &args.directory,
         &multi_progress,
+        args.skip_subtitles,
     )
     .await;
 

@@ -12,6 +12,7 @@ use crate::api_structs;
 use crate::error::{Error, Result};
 use crate::http_client::{HttpClient, HttpClientTrait};
 use crate::models::Episode;
+use crate::subtitle_cleaner;
 
 const TV3_SINGLE_EPISODE_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
@@ -21,6 +22,7 @@ const TV3_SINGLE_EPISODE_API_URL: &str =
 /// Retrieves the video URL and subtitles from the 3cat API, then streams
 /// the files to the given directory using the shared [`Client`] for
 /// connection pooling and the [`MultiProgress`] for concurrent progress bars.
+/// When `skip_subtitles` is `true`, subtitle downloading is skipped entirely.
 ///
 /// # Errors
 ///
@@ -31,6 +33,7 @@ pub async fn fetch_and_download_episode(
     multi_progress: &MultiProgress,
     client: &Client,
     directory: &str,
+    skip_subtitles: bool,
 ) -> Result<()> {
     let tv3_tv_show_api_response = http_client
         .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
@@ -54,7 +57,7 @@ pub async fn fetch_and_download_episode(
         episode.subtitle_url = Some(subtitles.url.clone());
     }
 
-    download_episode(&episode, directory, multi_progress, client).await
+    download_episode(&episode, directory, multi_progress, client, skip_subtitles).await
 }
 
 /// Downloads the video and subtitle files for an episode to the given directory.
@@ -72,13 +75,14 @@ async fn download_episode(
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
+    skip_subtitles: bool,
 ) -> Result<()> {
     if check_if_episode_exists(episode, directory).await? {
         info!("Episode {} already exists", episode.filename("mp4")?);
         return Ok(());
     }
 
-    download_data(episode, directory, multi_progress, client).await
+    download_data(episode, directory, multi_progress, client, skip_subtitles).await
 }
 
 #[instrument(skip_all)]
@@ -87,6 +91,7 @@ async fn download_data(
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
+    skip_subtitles: bool,
 ) -> Result<()> {
     let Some(video_url) = &episode.video_url else {
         return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
@@ -104,6 +109,10 @@ async fn download_data(
     .await?;
     info!("Downloaded video to {video_path}");
 
+    if skip_subtitles {
+        return Ok(());
+    }
+
     if let Some(subtitle_url) = &episode.subtitle_url {
         let subtitle_filename = episode.filename("vtt")?;
         let subtitle_path = full_episode_path(episode, directory, "vtt")?;
@@ -116,6 +125,8 @@ async fn download_data(
         )
         .await?;
         info!("Downloaded subtitle to {subtitle_path}");
+
+        subtitle_cleaner::clean_vtt_file(std::path::Path::new(&subtitle_path))?;
     }
 
     Ok(())

@@ -41,4 +41,8 @@ pub enum Error {
         #[from]
         source: std::num::ParseIntError,
     },
+
+    /// An error occurred while cleaning a subtitle file.
+    #[error("subtitle cleaning error: {0}")]
+    SubtitleCleaning(String),
 }

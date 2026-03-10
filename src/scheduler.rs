@@ -32,6 +32,7 @@ pub async fn download_all(
     http_client: &Arc<HttpClient>,
     directory: &str,
     multi_progress: &MultiProgress,
+    skip_subtitles: bool,
 ) -> anyhow::Result<()> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent.into()));
     let reqwest_client = http_client.inner().clone();
@@ -52,7 +53,15 @@ pub async fn download_all(
                 .await
                 .map_err(|e| Error::Downloading(e.to_string()))?;
 
-            downloader::fetch_and_download_episode(episode, &http, &mp, &client, &dir).await
+            downloader::fetch_and_download_episode(
+                episode,
+                &http,
+                &mp,
+                &client,
+                &dir,
+                skip_subtitles,
+            )
+            .await
         });
     }
 
