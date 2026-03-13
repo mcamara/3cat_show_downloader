@@ -33,23 +33,23 @@ use crate::error::{Error, Result};
 /// ```
 /// # use cat_show_downloader::subtitle_cleaner::clean_vtt_content;
 /// let raw = "WEBVTT\n\nRegion: id=r1 width=100%\n\n1\n00:00:01.000 --> 00:00:02.000 region:r1\nHello";
-/// let cleaned = clean_vtt_content(raw);
+/// let cleaned = clean_vtt_content(raw).unwrap();
 /// assert!(cleaned.contains("WEBVTT"));
 /// assert!(!cleaned.contains("Region:"));
 /// assert!(!cleaned.contains("region:r1"));
 /// ```
-pub fn clean_vtt_content(content: &str) -> String {
-    let region_line_re = Regex::new(r"(?m)^Region:.*$\n?").expect("valid regex");
+pub fn clean_vtt_content(content: &str) -> Result<String> {
+    let region_line_re = Regex::new(r"(?m)^Region:.*$\n?")?;
     let without_regions = region_line_re.replace_all(content, "");
 
-    let region_attr_re = Regex::new(r"\s*region:r\d+").expect("valid regex");
+    let region_attr_re = Regex::new(r"\s*region:r\d+")?;
     let without_region_attrs = region_attr_re.replace_all(&without_regions, "");
 
     // Collapse runs of 3+ newlines (left by stripped Region blocks) into double newlines
-    let excess_newlines_re = Regex::new(r"\n{3,}").expect("valid regex");
+    let excess_newlines_re = Regex::new(r"\n{3,}")?;
     let cleaned = excess_newlines_re.replace_all(&without_region_attrs, "\n\n");
 
-    cleaned.into_owned()
+    Ok(cleaned.into_owned())
 }
 
 /// Reads a VTT file, cleans its content, and writes it back in-place.
@@ -61,7 +61,7 @@ pub fn clean_vtt_file(path: &Path) -> Result<()> {
     let content =
         std::fs::read_to_string(path).map_err(|e| Error::SubtitleCleaning(e.to_string()))?;
 
-    let cleaned = clean_vtt_content(&content);
+    let cleaned = clean_vtt_content(&content)?;
 
     std::fs::write(path, cleaned).map_err(|e| Error::SubtitleCleaning(e.to_string()))?;
 
@@ -202,8 +202,8 @@ fn vtt_timestamp_to_ass(ts: &str) -> std::result::Result<String, String> {
 /// `{\c&H00FFFFFF&\3c&H00000000&}Hello`.
 ///
 /// Nested or overlapping tags are not supported (3cat VTT files don't use them).
-fn convert_cue_text_to_ass(text: &str) -> String {
-    let tag_re = Regex::new(r"<c\.([^>]+)>([^<]*)</c>").expect("valid regex");
+fn convert_cue_text_to_ass(text: &str) -> Result<String> {
+    let tag_re = Regex::new(r"<c\.([^>]+)>([^<]*)</c>")?;
 
     let result = tag_re.replace_all(text, |caps: &regex::Captures| {
         let classes = &caps[1];
@@ -227,7 +227,7 @@ fn convert_cue_text_to_ass(text: &str) -> String {
     });
 
     // Replace VTT newlines with ASS newlines
-    result.replace('\n', "\\N")
+    Ok(result.replace('\n', "\\N"))
 }
 
 /// Converts cleaned VTT content to ASS (Advanced SubStation Alpha) format.
@@ -254,8 +254,7 @@ fn convert_cue_text_to_ass(text: &str) -> String {
 pub fn convert_vtt_to_ass(vtt_content: &str) -> Result<String> {
     let mut ass = String::from(ASS_HEADER);
 
-    let timing_re = Regex::new(r"^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})")
-        .expect("valid regex");
+    let timing_re = Regex::new(r"^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})")?;
 
     let lines: Vec<&str> = vtt_content.lines().collect();
     let mut i = 0;
@@ -284,7 +283,7 @@ pub fn convert_vtt_to_ass(vtt_content: &str) -> Result<String> {
                 i += 1;
             }
 
-            let ass_text = convert_cue_text_to_ass(&cue_text);
+            let ass_text = convert_cue_text_to_ass(&cue_text)?;
 
             writeln!(ass, "Dialogue: 0,{start},{end},Default,,0,0,0,,{ass_text}",)
                 .map_err(|e| Error::SubtitleCleaning(e.to_string()))?;
@@ -327,15 +326,15 @@ mod tests {
     const SAMPLE_VTT: &str = "\
 WEBVTT
 
-Region: id=r1 width=100% lines=3 regionanchor=0%,96% viewportanchor=0%,100% scroll=none 
-Region: id=r2 width=100% lines=3 regionanchor=0%,96% viewportanchor=0%,100% scroll=none 
-Region: id=r3 width=98% lines=3 regionanchor=3%,88% viewportanchor=0%,100% scroll=none 
-Region: id=r4 width=100% lines=1 regionanchor=0%,96% viewportanchor=0%,100% scroll=none 
-Region: id=r5 width=100% lines=3 regionanchor=0%,88% viewportanchor=0%,100% scroll=none 
-Region: id=r6 width=100% lines=3 regionanchor=0%,79% viewportanchor=0%,100% scroll=none 
-Region: id=r7 width=98% lines=3 regionanchor=3%,96% viewportanchor=0%,100% scroll=none 
-Region: id=r8 width=98% lines=1 regionanchor=3%,96% viewportanchor=0%,100% scroll=none 
-Region: id=r9 width=98% lines=3 regionanchor=3%,88% viewportanchor=0%,100% scroll=none 
+Region: id=r1 width=100% lines=3 regionanchor=0%,96% viewportanchor=0%,100% scroll=none
+Region: id=r2 width=100% lines=3 regionanchor=0%,96% viewportanchor=0%,100% scroll=none
+Region: id=r3 width=98% lines=3 regionanchor=3%,88% viewportanchor=0%,100% scroll=none
+Region: id=r4 width=100% lines=1 regionanchor=0%,96% viewportanchor=0%,100% scroll=none
+Region: id=r5 width=100% lines=3 regionanchor=0%,88% viewportanchor=0%,100% scroll=none
+Region: id=r6 width=100% lines=3 regionanchor=0%,79% viewportanchor=0%,100% scroll=none
+Region: id=r7 width=98% lines=3 regionanchor=3%,96% viewportanchor=0%,100% scroll=none
+Region: id=r8 width=98% lines=1 regionanchor=3%,96% viewportanchor=0%,100% scroll=none
+Region: id=r9 width=98% lines=3 regionanchor=3%,88% viewportanchor=0%,100% scroll=none
 
 
 1
@@ -355,40 +354,40 @@ es noten... a tot el m\u{f3}n.\"</c>";
 
     #[test]
     fn test_should_remove_region_header_lines() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(!cleaned.contains("Region:"));
     }
 
     #[test]
     fn test_should_keep_webvtt_header() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.starts_with("WEBVTT"));
     }
 
     #[test]
     fn test_should_strip_region_attributes_from_timing_lines() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(!cleaned.contains("region:r1"));
         assert!(!cleaned.contains("region:r2"));
     }
 
     #[test]
     fn test_should_preserve_other_timing_attributes() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.contains("line:88%"));
         assert!(cleaned.contains("align:center"));
     }
 
     #[test]
     fn test_should_preserve_inline_styling_tags() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.contains("<c.white.background-black>"));
         assert!(cleaned.contains("</c>"));
     }
 
     #[test]
     fn test_should_preserve_cue_text_content() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.contains("Han passat dos anys"));
         assert!(cleaned.contains("els Shichibukais"));
         assert!(cleaned.contains("es noten... a tot el m"));
@@ -396,7 +395,7 @@ es noten... a tot el m\u{f3}n.\"</c>";
 
     #[test]
     fn test_should_preserve_cue_numbers() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.contains("\n1\n"));
         assert!(cleaned.contains("\n2\n"));
         assert!(cleaned.contains("\n3\n"));
@@ -404,13 +403,13 @@ es noten... a tot el m\u{f3}n.\"</c>";
 
     #[test]
     fn test_should_not_leave_excessive_blank_lines() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(!cleaned.contains("\n\n\n"));
     }
 
     #[test]
     fn test_should_produce_correct_timing_lines() {
-        let cleaned = clean_vtt_content(SAMPLE_VTT);
+        let cleaned = clean_vtt_content(SAMPLE_VTT).unwrap();
         assert!(cleaned.contains("00:00:11.680 --> 00:00:14.920 line:88% align:center"));
         assert!(cleaned.contains("00:00:15.000 --> 00:00:17.560 line:88% align:center"));
     }
@@ -418,7 +417,7 @@ es noten... a tot el m\u{f3}n.\"</c>";
     #[test]
     fn test_should_handle_vtt_with_no_regions() {
         let simple_vtt = "WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nHello world";
-        let cleaned = clean_vtt_content(simple_vtt);
+        let cleaned = clean_vtt_content(simple_vtt).unwrap();
         assert_eq!(cleaned, simple_vtt);
     }
 

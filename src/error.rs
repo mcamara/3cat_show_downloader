@@ -10,13 +10,21 @@ pub enum Error {
     #[error("TV show ID retrieval failed: {0}")]
     TvShowIdRetrieval(String),
 
+    /// Failed to retrieve the movie ID from the 3cat website.
+    #[error("movie ID retrieval failed: {0}")]
+    MovieIdRetrieval(String),
+
+    /// Failed to resolve a slug as either a TV show or a movie.
+    #[error("media ID retrieval failed: {0}")]
+    MediaIdRetrieval(String),
+
     /// Failed to decode an API response.
     #[error("decoding error: {0}")]
     Decoding(String),
 
-    /// The episode does not have a video URL.
-    #[error("episode does not have a video URL: {0}")]
-    EpisodeDoesNotHaveVideoUrl(String),
+    /// The media item does not have a video URL.
+    #[error("media item does not have a video URL: {0}")]
+    MediaDoesNotHaveVideoUrl(String),
 
     /// An error occurred during file downloading.
     #[error("downloading error: {0}")]
