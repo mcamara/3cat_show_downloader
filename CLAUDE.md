@@ -66,6 +66,7 @@ For docs, explore ./docs directory and put it to the right place, and update ind
 
 - Never use `unsafe` blocks, even in test code. If absolutely necessary, document safety invariants thoroughly.
 - Always validate and sanitize external input (user input, network data, file content), use `validator` crate for validation when necessary.
+- Try to use `rustls` features in all external crates.
 - Use `rustls` with `aws-lc-rs` crypto backend for TLS. Never use `native-tls` or OpenSSL bindings.
 - Use constant-time comparison for cryptographic values. Use `subtle` crate's `ConstantTimeEq`.
 - Never log, print, or expose sensitive data (passwords, tokens, keys). Implement `Debug` carefully for sensitive types.
@@ -126,6 +127,8 @@ For docs, explore ./docs directory and put it to the right place, and update ind
 - Write at least one example in doc comments for public functions. Examples are tested automatically.
 - Use `# Errors`, `# Panics`, `# Safety` sections in doc comments to document failure modes.
 - Generate docs with `cargo doc --open`. Ensure docs render correctly with proper formatting.
+- Update the version of the Cargo.toml file. If changes are significant, update the version number accordingly.
+- Update CHANGELOG.md with new version, a summary of changes since last release and release date.
 
 ## Code Style
 

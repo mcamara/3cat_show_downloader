@@ -1,42 +1,44 @@
-//! CLI tool to download complete TV shows from 3cat.cat.
+//! CLI tool to download TV shows and movies from 3cat.cat.
 
 mod api_structs;
 mod downloader;
-mod episodes;
 mod error;
 mod ffmpeg;
 mod http_client;
-mod id_retriever;
+mod media_resolver;
 mod models;
+mod movie;
 mod scheduler;
 pub mod subtitle_cleaner;
+mod tv_show;
 
 use std::io;
+use std::sync::Arc;
 
 use clap::Parser;
 use indicatif::MultiProgress;
 use tracing::{info, instrument, warn};
 use tracing_subscriber::fmt::MakeWriter;
 
-use crate::models::SubtitleMode;
+use crate::media_resolver::MediaType;
+use crate::models::{DownloadParams, SubtitleMode};
 
-/// Command-line arguments for the cat show downloader.
+/// Command-line arguments for the 3cat media downloader.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Slug of the TV show, for https://www.3cat.cat/3cat/bola-de-drac/ should be bola-de-drac
-    #[arg(short, long)]
-    tv_show_slug: String,
+    /// Slug of the TV show or movie (e.g. "bola-de-drac" from https://www.3cat.cat/3cat/bola-de-drac/)
+    slug: String,
 
-    /// Directory to save the episodes
+    /// Directory to save the downloaded files
     #[arg(short, long)]
     directory: String,
 
-    /// Episode number to start from, default to the first one
+    /// Episode number to start from (ignored for movies)
     #[arg(short, long, default_value_t = 1)]
     start_from_episode: i32,
 
-    /// Number of episodes to download concurrently (1-10)
+    /// Number of files to download concurrently (1-10)
     #[arg(short, long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(1..=10))]
     concurrent_downloads: u8,
 
@@ -138,29 +140,10 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
     }
 
     let http_client = http_client::http_client();
-    let id = id_retriever::get_tv_show_id(&args.tv_show_slug).await?;
+    let media = media_resolver::get_media_id(&args.slug).await?;
 
     if args.fix_existing_subtitles {
         subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
-    }
-
-    let episodes = episodes::get_episodes(&http_client, id).await?;
-
-    let episodes_to_download: Vec<_> = episodes
-        .into_iter()
-        .filter(|ep| {
-            if ep.episode_number < args.start_from_episode {
-                info!("Skipping episode {}", ep.episode_number);
-                false
-            } else {
-                true
-            }
-        })
-        .collect();
-
-    if episodes_to_download.is_empty() {
-        info!("No episodes to download");
-        return Ok(());
     }
 
     let subtitle_mode = if args.skip_subtitles {
@@ -173,21 +156,18 @@ async fn run(multi_progress: MultiProgress) -> anyhow::Result<()> {
         SubtitleMode::Download
     };
 
-    info!(
-        "Downloading {} episodes ({} at a time)",
-        episodes_to_download.len(),
-        args.concurrent_downloads,
-    );
-
-    let result = scheduler::download_all(
-        episodes_to_download,
-        args.concurrent_downloads,
-        &http_client,
-        &args.directory,
-        &multi_progress,
+    let params = DownloadParams {
+        http_client,
         subtitle_mode,
-    )
-    .await;
+        concurrent_downloads: args.concurrent_downloads,
+        multi_progress,
+        directory: Arc::from(args.directory.as_str()),
+    };
+
+    let result = match media {
+        MediaType::TvShow(id) => tv_show::download(id, args.start_from_episode, &params).await,
+        MediaType::Movie { id, slug } => movie::download(id, &slug, &params).await,
+    };
 
     result
 }

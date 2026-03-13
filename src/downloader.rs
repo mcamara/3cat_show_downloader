@@ -1,6 +1,4 @@
-//! Download logic for episode video and subtitle files.
-
-use std::sync::Arc;
+//! Download logic for media video and subtitle files.
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
@@ -11,96 +9,98 @@ use tracing::{info, instrument, warn};
 use crate::api_structs;
 use crate::error::{Error, Result};
 use crate::ffmpeg;
-use crate::http_client::{HttpClient, HttpClientTrait};
-use crate::models::{Episode, SubtitleMode};
+use crate::http_client::HttpClientTrait;
+use crate::models::{DownloadParams, MediaItem, SubtitleMode};
 use crate::subtitle_cleaner;
 
-const TV3_SINGLE_EPISODE_API_URL: &str =
+const TV3_SINGLE_MEDIA_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
-/// Fetches metadata for a single episode and downloads its video and subtitle files.
+/// Fetches metadata for a single media item and downloads its video and subtitle files.
 ///
-/// Retrieves the video URL and subtitles from the 3cat API, then streams
-/// the files to the given directory using the shared [`Client`] for
-/// connection pooling and the [`MultiProgress`] for concurrent progress bars.
-/// The [`SubtitleMode`] controls whether subtitles are skipped, downloaded
-/// as separate files, or embedded into the video via ffmpeg.
+/// Retrieves the video URL and subtitles from the 3cat API using the
+/// [`DownloadParams`] configuration, then streams the files to the output
+/// directory. The [`SubtitleMode`] inside `params` controls whether subtitles
+/// are skipped, downloaded as separate files, or embedded into the video via
+/// ffmpeg.
 ///
 /// # Errors
 ///
 /// Returns an error if the metadata fetch, download, or file I/O fails.
-pub async fn fetch_and_download_episode(
-    mut episode: Episode,
-    http_client: &Arc<HttpClient>,
-    multi_progress: &MultiProgress,
-    client: &Client,
-    directory: &str,
-    subtitle_mode: SubtitleMode,
-) -> Result<()> {
-    let tv3_tv_show_api_response = http_client
+pub async fn fetch_and_download_media(mut item: MediaItem, params: &DownloadParams) -> Result<()> {
+    let api_response = params
+        .http_client
         .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
-            TV3_SINGLE_EPISODE_API_URL
-                .replace("{id}", &episode.id.to_string())
+            TV3_SINGLE_MEDIA_API_URL
+                .replace("{id}", &item.id.to_string())
                 .as_str(),
             None,
         )
         .await
         .map_err(|e| Error::Decoding(e.to_string()))?;
 
-    for url in tv3_tv_show_api_response.media.url {
+    for url in api_response.media.url {
         if !url.active {
             continue;
         }
-        episode.video_url = Some(url.file);
+        item.video_url = Some(url.file);
         break;
     }
 
-    if let Some(subtitles) = tv3_tv_show_api_response.subtitles.first() {
-        episode.subtitle_url = Some(subtitles.url.clone());
+    if let Some(subtitles) = api_response.subtitles.first() {
+        item.subtitle_url = Some(subtitles.url.clone());
     }
 
-    download_episode(&episode, directory, multi_progress, client, subtitle_mode).await
+    let reqwest_client = params.http_client.inner();
+    download_media(
+        &item,
+        &params.directory,
+        &params.multi_progress,
+        reqwest_client,
+        params.subtitle_mode,
+    )
+    .await
 }
 
-/// Downloads the video and subtitle files for an episode to the given directory.
+/// Downloads the video and subtitle files for a media item to the given directory.
 ///
-/// Skips the download if the episode file already exists and is non-empty.
+/// Skips the download if the file already exists and is non-empty.
 /// Uses the provided [`MultiProgress`] to render concurrent progress bars,
 /// and the shared [`Client`] for connection pooling.
 ///
 /// # Errors
 ///
 /// Returns an error if downloading, file I/O, or path encoding fails.
-#[instrument(skip_all, fields(episode_number = episode.episode_number))]
-async fn download_episode(
-    episode: &Episode,
+#[instrument(skip_all, fields(media_id = item.id))]
+async fn download_media(
+    item: &MediaItem,
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
     subtitle_mode: SubtitleMode,
 ) -> Result<()> {
-    if check_if_episode_exists(episode, directory).await? {
-        info!("Episode {} already exists", episode.filename("mp4")?);
+    if check_if_media_exists(item, directory).await? {
+        info!("Media item already exists: {}", item.filename("mp4")?);
         return Ok(());
     }
 
-    download_data(episode, directory, multi_progress, client, subtitle_mode).await
+    download_data(item, directory, multi_progress, client, subtitle_mode).await
 }
 
 #[instrument(skip_all)]
 async fn download_data(
-    episode: &Episode,
+    item: &MediaItem,
     directory: &str,
     multi_progress: &MultiProgress,
     client: &Client,
     subtitle_mode: SubtitleMode,
 ) -> Result<()> {
-    let Some(video_url) = &episode.video_url else {
-        return Err(Error::EpisodeDoesNotHaveVideoUrl(episode.filename("mp4")?));
+    let Some(video_url) = &item.video_url else {
+        return Err(Error::MediaDoesNotHaveVideoUrl(item.filename("mp4")?));
     };
 
-    let video_filename = episode.filename("mp4")?;
-    let video_path = full_episode_path(episode, directory, "mp4")?;
+    let video_filename = item.filename("mp4")?;
+    let video_path = full_media_path(item, directory, "mp4")?;
     download_content(
         video_url,
         &video_path,
@@ -115,9 +115,9 @@ async fn download_data(
         return Ok(());
     }
 
-    if let Some(subtitle_url) = &episode.subtitle_url {
-        let subtitle_filename = episode.filename("vtt")?;
-        let subtitle_path = full_episode_path(episode, directory, "vtt")?;
+    if let Some(subtitle_url) = &item.subtitle_url {
+        let subtitle_filename = item.filename("vtt")?;
+        let subtitle_path = full_media_path(item, directory, "vtt")?;
         download_content(
             subtitle_url,
             &subtitle_path,
@@ -148,9 +148,9 @@ async fn download_data(
 }
 
 #[instrument(skip_all)]
-async fn check_if_episode_exists(episode: &Episode, directory: &str) -> Result<bool> {
-    let video_path = full_episode_path(episode, directory, "mp4")?;
-    let mkv_path = full_episode_path(episode, directory, "mkv")?;
+async fn check_if_media_exists(item: &MediaItem, directory: &str) -> Result<bool> {
+    let video_path = full_media_path(item, directory, "mp4")?;
+    let mkv_path = full_media_path(item, directory, "mkv")?;
     let tmp_path = format!("{video_path}.tmp");
 
     // Clean up stale .tmp files from previous interrupted runs
@@ -186,8 +186,8 @@ fn non_empty_file_exists(path: &str) -> bool {
     true
 }
 
-fn full_episode_path(episode: &Episode, directory: &str, extension: &str) -> Result<String> {
-    let path = std::path::Path::new(directory).join(episode.filename(extension)?);
+fn full_media_path(item: &MediaItem, directory: &str, extension: &str) -> Result<String> {
+    let path = std::path::Path::new(directory).join(item.filename(extension)?);
     path.to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| Error::InvalidPathEncoding(format!("{}", path.display())))
