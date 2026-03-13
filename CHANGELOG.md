@@ -5,6 +5,12 @@
 - Rename internal `Episode` model to `MediaItem` to support both TV show episodes and movies through a unified download pipeline.
 - Restructure `tv_show` and `movie` modules into their own directories with dedicated `api_structs` submodules.
 
+## 0.1.0
+
+- Add parallel downloading support
+- Embed subtitles to downloaded files and create MKV files using ffmpeg
+- Add progress bar support
+
 ## 0.0.2 - 2024-12-02
 
 - Make id retrieval more robust

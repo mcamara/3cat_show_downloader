@@ -218,32 +218,40 @@ async fn download_content(
 }
 
 /// Creates a styled progress bar for download tracking, registered with the [`MultiProgress`].
+///
+/// # Errors
+///
+/// Returns an error if the progress bar template is invalid.
 fn create_progress_bar(
     total_size: u64,
     label: &str,
     multi_progress: &MultiProgress,
-) -> ProgressBar {
+) -> Result<ProgressBar> {
     let pb = multi_progress.add(ProgressBar::new(total_size));
     pb.set_style(
         ProgressStyle::with_template(
             "{prefix:.bold} [{bar:30.cyan/blue}] {percent}% ({bytes}/{total_bytes}) {bytes_per_sec} ETA {eta}",
         )
-        .expect("valid progress bar template")
+        .map_err(|e| Error::Downloading(e.to_string()))?
         .progress_chars("█░░"),
     );
     pb.set_prefix(label.to_string());
-    pb
+    Ok(pb)
 }
 
 /// Creates a spinner-style progress bar when total size is unknown, registered with the [`MultiProgress`].
-fn create_spinner(label: &str, multi_progress: &MultiProgress) -> ProgressBar {
+///
+/// # Errors
+///
+/// Returns an error if the spinner template is invalid.
+fn create_spinner(label: &str, multi_progress: &MultiProgress) -> Result<ProgressBar> {
     let pb = multi_progress.add(ProgressBar::new_spinner());
     pb.set_style(
         ProgressStyle::with_template("{prefix:.bold} {spinner:.cyan} ({bytes}) {bytes_per_sec}")
-            .expect("valid spinner template"),
+            .map_err(|e| Error::Downloading(e.to_string()))?,
     );
     pb.set_prefix(label.to_string());
-    pb
+    Ok(pb)
 }
 
 #[instrument(skip_all, fields(url, path))]
@@ -265,8 +273,8 @@ async fn download_to_file(
         .map_err(|e| Error::Downloading(e.to_string()))?;
 
     let pb = match response.content_length() {
-        Some(total) => create_progress_bar(total, label, multi_progress),
-        None => create_spinner(label, multi_progress),
+        Some(total) => create_progress_bar(total, label, multi_progress)?,
+        None => create_spinner(label, multi_progress)?,
     };
 
     let mut downloaded: u64 = 0;
