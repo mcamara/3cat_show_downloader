@@ -26,6 +26,12 @@ pub enum Error {
     #[error("media item does not have a video URL: {0}")]
     MediaDoesNotHaveVideoUrl(String),
 
+    /// Subtitles were requested but the episode does not provide any.
+    #[error(
+        "no subtitles available for \"{0}\" — use --skip-subtitles to download without subtitles"
+    )]
+    NoSubtitlesAvailable(String),
+
     /// An error occurred during file downloading.
     #[error("downloading error: {0}")]
     Downloading(String),

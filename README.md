@@ -70,7 +70,7 @@ Per netejar i incrustar els subtítols existents directament als fitxers de vide
 
 Si tens [ffmpeg](https://ffmpeg.org/) instal·lat i accessible al PATH del sistema, els subtítols s'incrustaran automaticament als fitxers de video durant la descarrega. Els subtítols VTT es converteixen a format ASS (Advanced SubStation Alpha) per preservar l'estil original (colors, fons, etc.) i s'incrusten en un fitxer `.mkv` (Matroska) en lloc de `.mp4`. Els fitxers `.vtt` s'eliminen automaticament un cop incrustats.
 
-Si ffmpeg no esta instal·lat, els subtítols es descarregaran com a fitxers `.vtt` separats i el video es mantindra com a `.mp4` (el comportament original).
+Si ffmpeg no esta instal·lat, els subtítols es descarregaran com a fitxers `.vtt` separats i el video es mantindrà com a `.mp4` (el comportament original).
 
 L'opcio `--embed-existing-subtitles` permet incrustar els subtítols als videos que ja s'han descarregat previament. Aquesta opcio tambe neteja els subtítols (igual que `--fix-existing-subtitles`) abans d'incrustar-los. Un cop incrustats, els fitxers `.vtt` i `.mp4` originals s'eliminen i es genera un fitxer `.mkv`. Aquesta opcio requereix que ffmpeg estigui instal·lat.
 

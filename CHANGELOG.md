@@ -1,3 +1,7 @@
+## 1.0.1 - 2026-03-13
+
+- Handle episodes without subtitles gracefully: the `subtitles` field in the API response is now optional. When subtitles are unavailable and the user has not passed `--skip-subtitles`, a clear error is returned naming the episode and suggesting the flag.
+
 ## 1.0.0 - 2026-03-13
 
 - Add movie download support: the tool now automatically detects whether a slug is a TV show or a movie and downloads accordingly.

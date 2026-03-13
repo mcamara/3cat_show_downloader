@@ -47,8 +47,10 @@ pub async fn fetch_and_download_media(mut item: MediaItem, params: &DownloadPara
         break;
     }
 
-    if let Some(subtitles) = api_response.subtitles.first() {
+    if let Some(subtitles) = api_response.subtitles.as_ref().and_then(|s| s.first()) {
         item.subtitle_url = Some(subtitles.url.clone());
+    } else if params.subtitle_mode != SubtitleMode::Skip {
+        return Err(Error::NoSubtitlesAvailable(item.title.clone()));
     }
 
     let reqwest_client = params.http_client.inner();

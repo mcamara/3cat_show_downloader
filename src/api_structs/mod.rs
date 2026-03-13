@@ -19,9 +19,9 @@ impl Display for Tv3Error {
 pub struct SingleEpisodeRoot {
     /// Video file metadata.
     pub media: SingleEpisodeMedia,
-    /// Available subtitle tracks.
+    /// Available subtitle tracks (absent or empty when the episode has none).
     #[serde(rename = "subtitols")]
-    pub subtitles: Vec<SingleEpisodeSubtitles>,
+    pub subtitles: Option<Vec<SingleEpisodeSubtitles>>,
 }
 
 /// Container for the list of video URLs.
