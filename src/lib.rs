@@ -101,6 +101,13 @@ impl Drop for MultiProgressLineWriter {
 #[allow(clippy::let_and_return)] // Binding needed to satisfy Rust 2024 tail-expression drop order rules
 #[instrument(skip_all)]
 pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> anyhow::Result<()> {
+    if args.start_from_episode < 1 {
+        anyhow::bail!(
+            "start_from_episode must be at least 1, got {}",
+            args.start_from_episode
+        );
+    }
+
     let ffmpeg_available = ffmpeg::is_available().await;
 
     if args.embed_existing_subtitles {
