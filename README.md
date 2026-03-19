@@ -68,12 +68,12 @@ Per netejar i incrustar els subtítols existents directament als fitxers de vide
 
 ### Integració amb yt-dlp
 
-Si tens [yt-dlp](https://github.com/yt-dlp/yt-dlp) instal·lat i accessible al PATH del sistema, s'utilitza automaticament com a motor de descarrega en lloc del client HTTP integrat. Això proporciona:
+Si tens [yt-dlp](https://github.com/yt-dlp/yt-dlp) instal·lat i accessible al PATH del sistema, s'utilitza automàticament com a motor de descàrrega en lloc del client HTTP integrat. Això proporciona:
 
-- **Millor selecció de format**: yt-dlp selecciona automaticament la millor qualitat de video i audio disponible.
+- **Millor selecció de format**: yt-dlp selecciona automàticament la millor qualitat de vídeo i àudio disponible.
 - **Més robustesa**: yt-dlp gestiona millor els reintentos i les redireccions.
 
-Els subtítols segueixen passant pel mateix pipeline de neteja i incrustacio (veure seccio ffmpeg mes avall), de manera que la qualitat dels subtítols es identica tant si s'utilitza yt-dlp com el client HTTP integrat.
+Els subtítols segueixen passant pel mateix pipeline de neteja i incrustació (vegeu secció ffmpeg més avall), de manera que la qualitat dels subtítols és idèntica tant si s'utilitza yt-dlp com el client HTTP integrat.
 
 Per instal·lar yt-dlp:
 
@@ -87,7 +87,7 @@ pip install yt-dlp
 # O descarrega el binari directament des de https://github.com/yt-dlp/yt-dlp/releases
 ```
 
-Si yt-dlp no esta instal·lat, el programa continuara funcionant amb el client HTTP integrat, sense cap canvi de comportament.
+Si yt-dlp no està instal·lat, el programa continuarà funcionant amb el client HTTP integrat, sense cap canvi de comportament.
 
 ### Integracio amb ffmpeg
 

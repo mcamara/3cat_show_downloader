@@ -170,25 +170,70 @@ async fn download_data(
     Ok(())
 }
 
+/// Video file extensions produced by yt-dlp or the built-in HTTP downloader.
+///
+/// Used by [`check_if_media_exists`] to match any video file for a given stem
+/// while ignoring subtitle (`.vtt`, `.ass`) and other non-video files.
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "ts", "m4v"];
+
+/// Returns `true` when a non-empty video file with the same stem as `item`
+/// already exists in `directory`, regardless of container extension.
+///
+/// This covers the case where yt-dlp chose an extension other than `.mp4`
+/// (e.g. `.webm`) or where ffmpeg previously produced a `.mkv` after
+/// embedding subtitles.  Stale `.mp4.tmp` files left by interrupted
+/// HTTP downloads are cleaned up before the check.
 #[instrument(skip_all)]
 async fn check_if_media_exists(item: &MediaItem, directory: &str) -> Result<bool> {
     let video_path = full_media_path(item, directory, "mp4")?;
-    let mkv_path = full_media_path(item, directory, "mkv")?;
     let tmp_path = format!("{video_path}.tmp");
 
-    // Clean up stale .tmp files from previous interrupted runs
+    // Clean up stale .tmp files from previous interrupted runs.
     let _ = tokio::fs::remove_file(&tmp_path).await;
 
-    // Check for .mkv first (previously embedded with subtitles)
-    if non_empty_file_exists(&mkv_path) {
-        return Ok(true);
+    // Derive the stem (e.g. "7-episode-title") to match any video extension.
+    let filename = item.filename("mp4")?;
+    let stem = std::path::Path::new(&filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| Error::InvalidPathEncoding(filename.clone()))?;
+
+    let mut read_dir = tokio::fs::read_dir(std::path::Path::new(directory))
+        .await
+        .map_err(|e| Error::Downloading(e.to_string()))?;
+
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| Error::Downloading(e.to_string()))?
+    {
+        let entry_name = entry.file_name();
+        let entry_path = std::path::Path::new(&entry_name);
+
+        let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
+        if !VIDEO_EXTENSIONS.contains(&ext) {
+            continue;
+        }
+
+        let Some(entry_stem) = entry_path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if entry_stem != stem {
+            continue;
+        }
+
+        let full_path = std::path::Path::new(directory).join(&entry_name);
+        let full_path_str = full_path
+            .to_str()
+            .ok_or_else(|| Error::InvalidPathEncoding(format!("{}", full_path.display())))?;
+        if non_empty_file_exists(full_path_str) {
+            return Ok(true);
+        }
     }
 
-    if !non_empty_file_exists(&video_path) {
-        return Ok(false);
-    }
-
-    Ok(true)
+    Ok(false)
 }
 
 /// Returns `true` when `path` exists and has a non-zero size.
