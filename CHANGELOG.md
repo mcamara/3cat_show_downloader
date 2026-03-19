@@ -1,3 +1,7 @@
+## 1.1.0 - 2026-03-18
+
+- Move all module declarations, orchestration logic, and progress writer infrastructure from `main.rs` to `lib.rs`, reducing the binary entry point to a thin ~20-line wrapper that only handles tracing setup and runtime construction.
+
 ## 1.0.1 - 2026-03-13
 
 - Handle episodes without subtitles gracefully: the `subtitles` field in the API response is now optional. When subtitles are unavailable and the user has not passed `--skip-subtitles`, a clear error is returned naming the episode and suggesting the flag.

@@ -15,8 +15,15 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"
-version = "1.0.1"
+version = "1.1.0"
 
+[[bin]]
+name = "cat_show_downloader"
+path = "src/main.rs"
+
+[lib]
+name = "cat_show_downloader"
+path = "src/lib.rs"
 
 [lints.rust]
 missing_docs = "warn"
