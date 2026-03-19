@@ -130,6 +130,12 @@ For docs, explore ./docs directory and put it to the right place, and update ind
 - Update the version of the Cargo.toml file. If changes are significant, update the version number accordingly.
 - Update CHANGELOG.md with new version, a summary of changes since last release and release date.
 
+## Project Structure
+
+- **`main.rs` must stay slim**: it is the binary entry point only — tracing setup, runtime construction, and delegating to `run()`. All logic belongs in `lib.rs` or dedicated modules.
+- **Prefer `lib.rs` over `main.rs`**: application logic, orchestration, and shared types live in `lib.rs` so they are testable and reusable.
+- **Grow into a `src/` module tree**: when a feature area becomes large, extract it into its own module file (e.g. `src/downloader.rs`) or subdirectory with a `mod.rs` (e.g. `src/tv_show/`). Do not let any single file grow unbounded.
+
 ## Code Style
 
 - always import `use` dependencies in the top of the file in the following order: std, deps, local modules.

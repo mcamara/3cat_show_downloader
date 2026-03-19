@@ -36,6 +36,12 @@ pub struct DownloadParams {
     pub multi_progress: MultiProgress,
     /// Output directory for downloaded files.
     pub directory: Arc<str>,
+    /// Whether `yt-dlp` is available on the system PATH.
+    ///
+    /// When `true`, yt-dlp is used as the download backend instead of the
+    /// built-in HTTP downloader. yt-dlp handles format selection and subtitle
+    /// extraction internally without a prior API call.
+    pub yt_dlp_available: bool,
 }
 
 /// Represents a downloadable media item (TV show episode or movie).

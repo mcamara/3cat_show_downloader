@@ -1,3 +1,7 @@
+## 1.2.0 - 2026-03-19
+
+- Add yt-dlp as an optional download backend: when `yt-dlp` is found on PATH it is used instead of the built-in HTTP downloader. The CCMA/3cat extractor built into yt-dlp handles format selection and subtitle extraction internally, so no prior API call is made. Subtitle embedding (`SubtitleMode::Embed`) forces Matroska output (`--merge-output-format mkv`) for consistency with the ffmpeg path. If yt-dlp is not installed the existing behaviour is unchanged.
+
 ## 1.1.0 - 2026-03-18
 
 - Move all module declarations, orchestration logic, and progress writer infrastructure from `main.rs` to `lib.rs`, reducing the binary entry point to a thin ~20-line wrapper that only handles tracing setup and runtime construction.

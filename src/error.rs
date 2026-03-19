@@ -63,4 +63,8 @@ pub enum Error {
     /// An error occurred while running ffmpeg.
     #[error("ffmpeg error: {0}")]
     Ffmpeg(String),
+
+    /// An error occurred while running yt-dlp.
+    #[error("yt-dlp error: {0}")]
+    YtDlp(String),
 }

@@ -12,22 +12,39 @@ use crate::ffmpeg;
 use crate::http_client::HttpClientTrait;
 use crate::models::{DownloadParams, MediaItem, SubtitleMode};
 use crate::subtitle_cleaner;
+use crate::yt_dlp;
 
 const TV3_SINGLE_MEDIA_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
 /// Fetches metadata for a single media item and downloads its video and subtitle files.
 ///
-/// Retrieves the video URL and subtitles from the 3cat API using the
-/// [`DownloadParams`] configuration, then streams the files to the output
-/// directory. The [`SubtitleMode`] inside `params` controls whether subtitles
-/// are skipped, downloaded as separate files, or embedded into the video via
-/// ffmpeg.
+/// When `params.yt_dlp_available` is `true`, delegates entirely to yt-dlp,
+/// which handles format selection and subtitle extraction without a prior API
+/// call. Otherwise, retrieves the video URL and subtitles from the 3cat API
+/// and streams the files using the built-in HTTP downloader.
+///
+/// The [`SubtitleMode`] inside `params` controls whether subtitles are
+/// skipped, downloaded as separate files, or embedded into the video.
 ///
 /// # Errors
 ///
 /// Returns an error if the metadata fetch, download, or file I/O fails.
 pub async fn fetch_and_download_media(mut item: MediaItem, params: &DownloadParams) -> Result<()> {
+    if params.yt_dlp_available {
+        if check_if_media_exists(&item, &params.directory).await? {
+            info!("Media item already exists: {}", item.filename("mp4")?);
+            return Ok(());
+        }
+        return yt_dlp::download(
+            &item,
+            &params.directory,
+            params.subtitle_mode,
+            &params.multi_progress,
+        )
+        .await;
+    }
+
     let api_response = params
         .http_client
         .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
@@ -132,7 +149,11 @@ async fn download_data(
         subtitle_cleaner::clean_vtt_file(std::path::Path::new(&subtitle_path))?;
 
         if subtitle_mode == SubtitleMode::Embed {
-            match ffmpeg::embed_subtitles(&video_path, &subtitle_path).await {
+            let track = ffmpeg::SubtitleTrack {
+                path: std::path::PathBuf::from(&subtitle_path),
+                lang_code: "ca".to_string(),
+            };
+            match ffmpeg::embed_subtitles(&video_path, &[track]).await {
                 Ok(mkv_path) => {
                     info!("Subtitles embedded into video {mkv_path}");
                 }
