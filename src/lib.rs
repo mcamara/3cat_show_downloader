@@ -108,6 +108,10 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         );
     }
 
+    if args.fix_existing_subtitles {
+        subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
+    }
+
     let ffmpeg_available = ffmpeg::is_available().await;
 
     if args.embed_existing_subtitles {
@@ -121,10 +125,6 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
 
     let http_client = http_client::http_client();
     let media = media_resolver::get_media_id(&args.slug).await?;
-
-    if args.fix_existing_subtitles {
-        subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
-    }
 
     let subtitle_mode = if args.skip_subtitles {
         SubtitleMode::Skip
