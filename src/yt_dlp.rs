@@ -104,8 +104,14 @@ pub async fn download(
         .spawn()
         .map_err(|e| Error::YtDlp(format!("failed to run yt-dlp: {e}")))?;
 
-    let stdout = child.stdout.take().expect("stdout was piped");
-    let stderr = child.stderr.take().expect("stderr was piped");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| Error::YtDlp("failed to capture stdout from yt-dlp".to_string()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| Error::YtDlp("failed to capture stderr from yt-dlp".to_string()))?;
 
     let pb = create_progress_bar(&output_filename, multi_progress)?;
     let pb_clone = pb.clone();
@@ -247,9 +253,13 @@ mod tests {
         assert!(parse_download_progress("").is_none());
     }
 
+    /// Smoke test: verifies that `is_available` returns without panicking.
+    /// Ignored by default because yt-dlp may not be installed in all environments.
+    /// Run with `cargo test -- --ignored` when yt-dlp is present on PATH.
     #[tokio::test]
+    #[ignore]
     async fn test_should_detect_yt_dlp_availability() {
-        let _available = is_available().await;
+        assert!(is_available().await);
     }
 
     #[tokio::test]
@@ -264,6 +274,6 @@ mod tests {
         };
         let mp = MultiProgress::new();
         let result = download(&item, "/tmp", SubtitleMode::Skip, &mp).await;
-        let _ = result;
+        assert!(result.is_err());
     }
 }
