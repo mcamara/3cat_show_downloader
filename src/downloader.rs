@@ -12,22 +12,39 @@ use crate::ffmpeg;
 use crate::http_client::HttpClientTrait;
 use crate::models::{DownloadParams, MediaItem, SubtitleMode};
 use crate::subtitle_cleaner;
+use crate::yt_dlp;
 
 const TV3_SINGLE_MEDIA_API_URL: &str =
     "https://dinamics.ccma.cat/pvideo/media.jsp?media=video&version=0s&idint={id}";
 
 /// Fetches metadata for a single media item and downloads its video and subtitle files.
 ///
-/// Retrieves the video URL and subtitles from the 3cat API using the
-/// [`DownloadParams`] configuration, then streams the files to the output
-/// directory. The [`SubtitleMode`] inside `params` controls whether subtitles
-/// are skipped, downloaded as separate files, or embedded into the video via
-/// ffmpeg.
+/// When `params.yt_dlp_available` is `true`, delegates entirely to yt-dlp,
+/// which handles format selection and subtitle extraction without a prior API
+/// call. Otherwise, retrieves the video URL and subtitles from the 3cat API
+/// and streams the files using the built-in HTTP downloader.
+///
+/// The [`SubtitleMode`] inside `params` controls whether subtitles are
+/// skipped, downloaded as separate files, or embedded into the video.
 ///
 /// # Errors
 ///
 /// Returns an error if the metadata fetch, download, or file I/O fails.
 pub async fn fetch_and_download_media(mut item: MediaItem, params: &DownloadParams) -> Result<()> {
+    if params.yt_dlp_available {
+        if check_if_media_exists(&item, &params.directory).await? {
+            info!("Media item already exists: {}", item.filename("mp4")?);
+            return Ok(());
+        }
+        return yt_dlp::download(
+            &item,
+            &params.directory,
+            params.subtitle_mode,
+            &params.multi_progress,
+        )
+        .await;
+    }
+
     let api_response = params
         .http_client
         .get::<api_structs::SingleEpisodeRoot, api_structs::Tv3Error>(
@@ -132,7 +149,11 @@ async fn download_data(
         subtitle_cleaner::clean_vtt_file(std::path::Path::new(&subtitle_path))?;
 
         if subtitle_mode == SubtitleMode::Embed {
-            match ffmpeg::embed_subtitles(&video_path, &subtitle_path).await {
+            let track = ffmpeg::SubtitleTrack {
+                path: std::path::PathBuf::from(&subtitle_path),
+                lang_code: "ca".to_string(),
+            };
+            match ffmpeg::embed_subtitles(&video_path, &[track]).await {
                 Ok(mkv_path) => {
                     info!("Subtitles embedded into video {mkv_path}");
                 }
@@ -149,25 +170,70 @@ async fn download_data(
     Ok(())
 }
 
+/// Video file extensions produced by yt-dlp or the built-in HTTP downloader.
+///
+/// Used by [`check_if_media_exists`] to match any video file for a given stem
+/// while ignoring subtitle (`.vtt`, `.ass`) and other non-video files.
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "webm", "ts", "m4v"];
+
+/// Returns `true` when a non-empty video file with the same stem as `item`
+/// already exists in `directory`, regardless of container extension.
+///
+/// This covers the case where yt-dlp chose an extension other than `.mp4`
+/// (e.g. `.webm`) or where ffmpeg previously produced a `.mkv` after
+/// embedding subtitles.  Stale `.mp4.tmp` files left by interrupted
+/// HTTP downloads are cleaned up before the check.
 #[instrument(skip_all)]
 async fn check_if_media_exists(item: &MediaItem, directory: &str) -> Result<bool> {
     let video_path = full_media_path(item, directory, "mp4")?;
-    let mkv_path = full_media_path(item, directory, "mkv")?;
     let tmp_path = format!("{video_path}.tmp");
 
-    // Clean up stale .tmp files from previous interrupted runs
+    // Clean up stale .tmp files from previous interrupted runs.
     let _ = tokio::fs::remove_file(&tmp_path).await;
 
-    // Check for .mkv first (previously embedded with subtitles)
-    if non_empty_file_exists(&mkv_path) {
-        return Ok(true);
+    // Derive the stem (e.g. "7-episode-title") to match any video extension.
+    let filename = item.filename("mp4")?;
+    let stem = std::path::Path::new(&filename)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| Error::InvalidPathEncoding(filename.clone()))?;
+
+    let mut read_dir = tokio::fs::read_dir(std::path::Path::new(directory))
+        .await
+        .map_err(|e| Error::Downloading(e.to_string()))?;
+
+    while let Some(entry) = read_dir
+        .next_entry()
+        .await
+        .map_err(|e| Error::Downloading(e.to_string()))?
+    {
+        let entry_name = entry.file_name();
+        let entry_path = std::path::Path::new(&entry_name);
+
+        let Some(ext) = entry_path.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
+        if !VIDEO_EXTENSIONS.contains(&ext) {
+            continue;
+        }
+
+        let Some(entry_stem) = entry_path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if entry_stem != stem {
+            continue;
+        }
+
+        let full_path = std::path::Path::new(directory).join(&entry_name);
+        let full_path_str = full_path
+            .to_str()
+            .ok_or_else(|| Error::InvalidPathEncoding(format!("{}", full_path.display())))?;
+        if non_empty_file_exists(full_path_str) {
+            return Ok(true);
+        }
     }
 
-    if !non_empty_file_exists(&video_path) {
-        return Ok(false);
-    }
-
-    Ok(true)
+    Ok(false)
 }
 
 /// Returns `true` when `path` exists and has a non-zero size.

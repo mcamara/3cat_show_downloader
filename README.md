@@ -66,6 +66,29 @@ Per netejar i incrustar els subtítols existents directament als fitxers de vide
 ./cat_show_downloader bola-de-drac -d ~/Downloads/bola-de-drac/ --embed-existing-subtitles
 ```
 
+### Integració amb yt-dlp
+
+Si tens [yt-dlp](https://github.com/yt-dlp/yt-dlp) instal·lat i accessible al PATH del sistema, s'utilitza automàticament com a motor de descàrrega en lloc del client HTTP integrat. Això proporciona:
+
+- **Millor selecció de format**: yt-dlp selecciona automàticament la millor qualitat de vídeo i àudio disponible.
+- **Més robustesa**: yt-dlp gestiona millor els reintentos i les redireccions.
+
+Els subtítols segueixen passant pel mateix pipeline de neteja i incrustació (vegeu secció ffmpeg més avall), de manera que la qualitat dels subtítols és idèntica tant si s'utilitza yt-dlp com el client HTTP integrat.
+
+Per instal·lar yt-dlp:
+
+```bash
+# macOS (Homebrew)
+brew install yt-dlp
+
+# Linux / macOS (pip)
+pip install yt-dlp
+
+# O descarrega el binari directament des de https://github.com/yt-dlp/yt-dlp/releases
+```
+
+Si yt-dlp no està instal·lat, el programa continuarà funcionant amb el client HTTP integrat, sense cap canvi de comportament.
+
 ### Integracio amb ffmpeg
 
 Si tens [ffmpeg](https://ffmpeg.org/) instal·lat i accessible al PATH del sistema, els subtítols s'incrustaran automaticament als fitxers de video durant la descarrega. Els subtítols VTT es converteixen a format ASS (Advanced SubStation Alpha) per preservar l'estil original (colors, fons, etc.) i s'incrusten en un fitxer `.mkv` (Matroska) en lloc de `.mp4`. Els fitxers `.vtt` s'eliminen automaticament un cop incrustats.

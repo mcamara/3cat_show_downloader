@@ -18,6 +18,7 @@ mod movie;
 mod scheduler;
 pub mod subtitle_cleaner;
 mod tv_show;
+mod yt_dlp;
 
 use std::io;
 use std::sync::Arc;
@@ -112,7 +113,8 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
     }
 
-    let ffmpeg_available = ffmpeg::is_available().await;
+    let (ffmpeg_available, yt_dlp_available) =
+        tokio::join!(ffmpeg::is_available(), yt_dlp::is_available());
 
     if args.embed_existing_subtitles {
         if !ffmpeg_available {
@@ -136,12 +138,17 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         SubtitleMode::Download
     };
 
+    if yt_dlp_available {
+        info!("yt-dlp detected, using it as the download backend");
+    }
+
     let params = DownloadParams {
         http_client,
         subtitle_mode,
         concurrent_downloads: args.concurrent_downloads,
         multi_progress,
         directory: Arc::from(args.directory.as_str()),
+        yt_dlp_available,
     };
 
     let result = match media {
