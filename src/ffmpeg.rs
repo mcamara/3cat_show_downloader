@@ -1,16 +1,19 @@
-//! FFmpeg detection and subtitle embedding utilities.
+//! FFmpeg detection, encoder probing, container remux, and subtitle embedding.
 //!
-//! Provides functions to detect whether `ffmpeg` is installed, embed
-//! subtitles into video files using Matroska containers with ASS
-//! subtitle tracks (preserving VTT colour styling), and batch-process
-//! existing downloads in a directory.
+//! Provides functions to detect whether `ffmpeg` is installed, probe which
+//! video encoders it has compiled in (so the re-encode stage can prefer
+//! NVIDIA NVENC over software `libx264`/`libx265`), embed subtitles into
+//! video files using Matroska containers with ASS subtitle tracks
+//! (preserving VTT colour styling), batch-process existing downloads in a
+//! directory, and losslessly remux any container into `.mkv` so every
+//! download ends up in the same container regardless of what yt-dlp chose.
 //!
 //! The pipeline is: clean VTT → convert to ASS (with inline colour
 //! overrides) → mux into MKV with `-c:s ass`.  This preserves the
 //! `<c.white.background-black>` styling from 3cat VTT files, which
 //! ffmpeg's WebVTT encoder and MP4's `mov_text` codec both strip.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use tokio::process::Command;
@@ -36,6 +39,260 @@ fn subtitle_display(lang_code: &str) -> (&'static str, &'static str) {
         "es" => ("spa", "Español"),
         _ => ("und", "Unknown"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Encoder capability probe + container remux
+// ---------------------------------------------------------------------------
+
+/// Video encoder backend family.
+///
+/// Ordered by preference: `Nvenc` > `Amf` > `Qsv` > `LibSw`. Used by
+/// [`EncoderCapabilities`] to pick the best available backend for a given
+/// codec target so the re-encoder can use the GPU when present and fall back
+/// transparently to software (`libx264` / `libx265`) when not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VcodecBackend {
+    /// NVIDIA NVENC (`h264_nvenc`, `hevc_nvenc`).
+    Nvenc,
+    /// AMD AMF (`h264_amf`, `hevc_amf`).
+    Amf,
+    /// Intel Quick Sync Video (`h264_qsv`, `hevc_qsv`).
+    Qsv,
+    /// Software (`libx264`, `libx265`).
+    LibSw,
+}
+
+/// Target codec family for an encoder pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VcodecTarget {
+    /// H.264 / AVC.
+    H264,
+    /// H.265 / HEVC.
+    H265,
+}
+
+/// Snapshot of which video encoders are compiled into the host `ffmpeg`.
+///
+/// Populated by [`probe_encoders`] from `ffmpeg -encoders`. Both
+/// [`Self::h264`] and [`Self::h265`] are sorted by backend preference so the
+/// first element is always the best one available.
+#[derive(Debug, Clone, Default)]
+pub struct EncoderCapabilities {
+    h264: Vec<VcodecBackend>,
+    h265: Vec<VcodecBackend>,
+}
+
+impl EncoderCapabilities {
+    /// Returns the available H.264 backends in preference order.
+    pub fn h264(&self) -> &[VcodecBackend] {
+        &self.h264
+    }
+
+    /// Returns the available H.265 backends in preference order.
+    pub fn h265(&self) -> &[VcodecBackend] {
+        &self.h265
+    }
+
+    /// Returns `true` when neither codec family has any registered backend.
+    pub fn is_empty(&self) -> bool {
+        self.h264.is_empty() && self.h265.is_empty()
+    }
+
+    /// Returns the preferred H.264 backend, falling back to software.
+    pub fn preferred_h264(&self) -> VcodecBackend {
+        self.h264.first().copied().unwrap_or(VcodecBackend::LibSw)
+    }
+
+    /// Returns the preferred H.265 backend, falling back to software.
+    pub fn preferred_h265(&self) -> VcodecBackend {
+        self.h265.first().copied().unwrap_or(VcodecBackend::LibSw)
+    }
+
+    /// Parses the textual output of `ffmpeg -encoders` into a capabilities
+    /// snapshot. Each encoder appears on its own line as
+    /// `<flags> <name> <description>`; we tokenise by whitespace and
+    /// inspect the second token.
+    pub fn parse(encoders_output: &str) -> Self {
+        let mut h264: Vec<VcodecBackend> = Vec::new();
+        let mut h265: Vec<VcodecBackend> = Vec::new();
+        let mut seen_h264: BTreeSet<&str> = BTreeSet::new();
+        let mut seen_h265: BTreeSet<&str> = BTreeSet::new();
+
+        for line in encoders_output.lines() {
+            let mut tokens = line.split_whitespace();
+            let Some(name) = tokens.nth(1) else {
+                continue;
+            };
+            let Some((backend, codec)) = classify_encoder(name) else {
+                continue;
+            };
+            match codec {
+                "h264" => {
+                    if seen_h264.insert(name) {
+                        h264.push(backend);
+                    }
+                }
+                "h265" if seen_h265.insert(name) => {
+                    h265.push(backend);
+                }
+                _ => {}
+            }
+        }
+
+        h264.sort_by_key(backend_rank);
+        h265.sort_by_key(backend_rank);
+
+        Self { h264, h265 }
+    }
+
+    /// One-line human-readable summary suitable for `tracing::info!`.
+    pub fn summary(&self) -> String {
+        if self.is_empty() {
+            return "no GPU encoder detected; CPU fallback (libx264/libx265)".to_string();
+        }
+        let h264 = self
+            .h264()
+            .iter()
+            .map(|b| backend_short(*b))
+            .collect::<Vec<_>>()
+            .join(",");
+        let h265 = self
+            .h265()
+            .iter()
+            .map(|b| backend_short(*b))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("encoder capabilities: h264=[{h264}], hevc=[{h265}]")
+    }
+}
+
+fn classify_encoder(name: &str) -> Option<(VcodecBackend, &'static str)> {
+    match name {
+        "h264_nvenc" => Some((VcodecBackend::Nvenc, "h264")),
+        "hevc_nvenc" => Some((VcodecBackend::Nvenc, "h265")),
+        "h264_amf" => Some((VcodecBackend::Amf, "h264")),
+        "hevc_amf" => Some((VcodecBackend::Amf, "h265")),
+        "h264_qsv" | "h264_videotoolbox" => Some((VcodecBackend::Qsv, "h264")),
+        "hevc_qsv" | "hevc_videotoolbox" => Some((VcodecBackend::Qsv, "h265")),
+        "libx264" => Some((VcodecBackend::LibSw, "h264")),
+        "libx265" => Some((VcodecBackend::LibSw, "h265")),
+        _ => None,
+    }
+}
+
+const fn backend_rank(backend: &VcodecBackend) -> u8 {
+    match backend {
+        VcodecBackend::Nvenc => 0,
+        VcodecBackend::Amf => 1,
+        VcodecBackend::Qsv => 2,
+        VcodecBackend::LibSw => 3,
+    }
+}
+
+fn backend_short(backend: VcodecBackend) -> &'static str {
+    match backend {
+        VcodecBackend::Nvenc => "nvenc",
+        VcodecBackend::Amf => "amf",
+        VcodecBackend::Qsv => "qsv",
+        VcodecBackend::LibSw => "libsw",
+    }
+}
+
+/// Maps a `(backend, target)` pair to the actual ffmpeg encoder name.
+#[must_use]
+pub fn backend_arg(backend: VcodecBackend, target: VcodecTarget) -> &'static str {
+    match (backend, target) {
+        (VcodecBackend::Nvenc, VcodecTarget::H264) => "h264_nvenc",
+        (VcodecBackend::Nvenc, VcodecTarget::H265) => "hevc_nvenc",
+        (VcodecBackend::Amf, VcodecTarget::H264) => "h264_amf",
+        (VcodecBackend::Amf, VcodecTarget::H265) => "hevc_amf",
+        (VcodecBackend::Qsv, VcodecTarget::H264) => "h264_qsv",
+        (VcodecBackend::Qsv, VcodecTarget::H265) => "hevc_qsv",
+        (VcodecBackend::LibSw, VcodecTarget::H264) => "libx264",
+        (VcodecBackend::LibSw, VcodecTarget::H265) => "libx265",
+    }
+}
+
+/// Runtime cache of the encoder capabilities probe.
+static CAPS: tokio::sync::OnceCell<EncoderCapabilities> = tokio::sync::OnceCell::const_new();
+
+/// Probes `ffmpeg -encoders` (once, cached for the process lifetime) and
+/// returns a reference to the resulting capabilities.
+///
+/// Falls back to an empty [`EncoderCapabilities`] (CPU-only) when the probe
+/// fails so callers can always dereference the result safely.
+#[must_use]
+pub async fn probe_encoders() -> &'static EncoderCapabilities {
+    CAPS.get_or_init(|| async { probe_encoders_inner().await.unwrap_or_default() })
+        .await
+}
+
+async fn probe_encoders_inner() -> Result<EncoderCapabilities> {
+    let output = Command::new("ffmpeg")
+        .arg("-hide_banner")
+        .arg("-encoders")
+        .output()
+        .await
+        .map_err(|e| Error::Ffmpeg(format!("failed to launch ffmpeg -encoders: {e}")))?;
+    if !output.status.success() {
+        return Err(Error::Ffmpeg(format!(
+            "ffmpeg -encoders exited with {}",
+            output.status
+        )));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(EncoderCapabilities::parse(&text))
+}
+
+/// Remuxes a media file into a Matroska (`.mkv`) container via stream copy.
+///
+/// Quality is preserved (no re-encode). On success the input file is removed
+/// and the path to the new `.mkv` is returned. When the input is already a
+/// `.mkv` this is a no-op (returns the same path).
+///
+/// Failures are returned to the caller; the original file is preserved when
+/// the new muxer cannot be produced.
+///
+/// # Errors
+///
+/// Returns [`Error::Ffmpeg`] when the `ffmpeg` process cannot be launched or
+/// exits non-zero, or when the atomic rename fails.
+pub async fn remux_to_mkv(input: &Path) -> Result<PathBuf> {
+    let output = input.with_extension("mkv");
+    if output == *input {
+        return Ok(output);
+    }
+    let tmp = input.with_extension("mkv.remux.tmp");
+
+    let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-nostdin")
+        .arg("-i")
+        .arg(input)
+        .arg("-c")
+        .arg("copy")
+        .arg("-f")
+        .arg("matroska")
+        .arg(&tmp)
+        .status()
+        .await
+        .map_err(|e| Error::Ffmpeg(format!("failed to launch ffmpeg remux: {e}")))?;
+
+    if !status.success() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(Error::Ffmpeg(format!(
+            "ffmpeg remux exited with {status} for {}",
+            input.display()
+        )));
+    }
+
+    // `std::fs::rename` (not `tokio::fs::rename`) for the same Windows
+    // reason documented in `transcode::reencode`.
+    std::fs::rename(&tmp, &output)
+        .map_err(|e| Error::Ffmpeg(format!("remux rename failed: {e}")))?;
+    let _ = tokio::fs::remove_file(input).await;
+    Ok(output)
 }
 
 /// Checks whether `ffmpeg` is available on the system PATH.
@@ -138,8 +395,9 @@ pub async fn embed_subtitles(video_path: &str, subtitles: &[SubtitleTrack]) -> R
         )));
     }
 
-    tokio::fs::rename(&tmp_output, &mkv_str)
-        .await
+    // `std::fs::rename` for Windows replace-existing semantics — see
+    // `transcode::reencode` for the full rationale.
+    std::fs::rename(&tmp_output, &mkv_str)
         .map_err(|e| Error::Ffmpeg(format!("failed to rename muxed file: {e}")))?;
 
     for track in subtitles {
@@ -339,5 +597,129 @@ mod tests {
     fn test_should_return_none_for_non_vtt() {
         assert!(parse_vtt_stem_and_lang(Path::new("/foo/video.mp4")).is_none());
         assert!(parse_vtt_stem_and_lang(Path::new("/foo/video.ass")).is_none());
+    }
+
+    // -------------------------------------------------------------------
+    // EncoderCapabilities::parse tests
+    // -------------------------------------------------------------------
+
+    const FFMPEG_ENCODERS_NVENC: &str = "\
+Encoders:
+ V..... = Video
+ A..... = Audio
+ S..... = Subtitle
+ ------
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+ V..... libx265              libx265 H.265 / HEVC (codec hevc)
+ V..... h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
+ V..... hevc_nvenc           NVIDIA NVENC hevc encoder (codec hevc)
+";
+
+    const FFMPEG_ENCODERS_SOFTWARE_ONLY: &str = "\
+Encoders:
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+ V..... libx265              libx265 H.265 / HEVC (codec hevc)
+";
+
+    const FFMPEG_ENCODERS_MIXED: &str = "\
+Encoders:
+ V..... libx264              libx264 H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (codec h264)
+ V..... hevc_qsv             HEVC / H.265 / MPEG-H HEVC (codec hevc)
+ V..... hevc_nvenc           NVIDIA NVENC hevc encoder (codec hevc)
+";
+
+    #[test]
+    fn test_should_parse_nvenc_capabilities() {
+        let caps = EncoderCapabilities::parse(FFMPEG_ENCODERS_NVENC);
+        // Fixture contains both libx264/libx265 and h264_nvenc/hevc_nvenc;
+        // NVENC must be picked as the preferred backend for both codecs.
+        assert_eq!(caps.preferred_h264(), VcodecBackend::Nvenc);
+        assert_eq!(caps.preferred_h265(), VcodecBackend::Nvenc);
+        assert!(caps.h264().contains(&VcodecBackend::Nvenc));
+        assert!(caps.h265().contains(&VcodecBackend::Nvenc));
+        assert!(!caps.is_empty());
+    }
+
+    #[test]
+    fn test_should_parse_software_only_capabilities() {
+        let caps = EncoderCapabilities::parse(FFMPEG_ENCODERS_SOFTWARE_ONLY);
+        assert!(caps.h264().contains(&VcodecBackend::LibSw));
+        assert!(caps.h265().contains(&VcodecBackend::LibSw));
+        assert_eq!(caps.preferred_h264(), VcodecBackend::LibSw);
+        assert_eq!(caps.preferred_h265(), VcodecBackend::LibSw);
+    }
+
+    #[test]
+    fn test_should_prefer_nvenc_over_software_when_both_present() {
+        let caps = EncoderCapabilities::parse(FFMPEG_ENCODERS_NVENC);
+        assert_eq!(caps.preferred_h264(), VcodecBackend::Nvenc);
+        assert_eq!(caps.preferred_h265(), VcodecBackend::Nvenc);
+    }
+
+    #[test]
+    fn test_should_prefer_nvenc_over_qsv_when_both_present() {
+        let caps = EncoderCapabilities::parse(FFMPEG_ENCODERS_MIXED);
+        // h265 has both nvenc and qsv; nvenc must come first.
+        assert_eq!(caps.h265()[0], VcodecBackend::Nvenc);
+        assert!(caps.h265().contains(&VcodecBackend::Qsv));
+    }
+
+    #[test]
+    fn test_should_deduplicate_repeated_encoder_names() {
+        let repeated = "V..... h264_nvenc foo\nV..... h264_nvenc bar\n";
+        let caps = EncoderCapabilities::parse(repeated);
+        assert_eq!(caps.h264().len(), 1);
+    }
+
+    #[test]
+    fn test_should_fall_back_to_libsw_when_no_h264_present() {
+        // Build an artificial case with only h265 to exercise the fallback.
+        let h265_only = "V..... hevc_nvenc nvenc hevc\n";
+        let caps = EncoderCapabilities::parse(h265_only);
+        assert_eq!(caps.preferred_h264(), VcodecBackend::LibSw);
+        assert_eq!(caps.preferred_h265(), VcodecBackend::Nvenc);
+    }
+
+    #[test]
+    fn test_should_return_empty_for_unrecognised_encoder_text() {
+        let caps = EncoderCapabilities::parse("garbage line\nno encoder here\n");
+        assert!(caps.is_empty());
+    }
+
+    #[test]
+    fn test_backend_arg_returns_correct_ffmpeg_encoder_name() {
+        assert_eq!(
+            backend_arg(VcodecBackend::Nvenc, VcodecTarget::H264),
+            "h264_nvenc"
+        );
+        assert_eq!(
+            backend_arg(VcodecBackend::Nvenc, VcodecTarget::H265),
+            "hevc_nvenc"
+        );
+        assert_eq!(
+            backend_arg(VcodecBackend::LibSw, VcodecTarget::H264),
+            "libx264"
+        );
+        assert_eq!(
+            backend_arg(VcodecBackend::LibSw, VcodecTarget::H265),
+            "libx265"
+        );
+        assert_eq!(
+            backend_arg(VcodecBackend::Qsv, VcodecTarget::H265),
+            "hevc_qsv"
+        );
+    }
+
+    #[test]
+    fn test_summary_includes_backend_names_when_present() {
+        let caps = EncoderCapabilities::parse(FFMPEG_ENCODERS_NVENC);
+        let s = caps.summary();
+        assert!(s.contains("nvenc"), "summary should mention nvenc: {s}");
+    }
+
+    #[test]
+    fn test_summary_reports_cpu_fallback_when_empty() {
+        let caps = EncoderCapabilities::default();
+        assert!(caps.summary().contains("CPU fallback"));
     }
 }

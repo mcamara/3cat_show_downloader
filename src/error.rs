@@ -18,9 +18,16 @@ pub enum Error {
     #[error("media ID retrieval failed: {0}")]
     MediaIdRetrieval(String),
 
-    /// Failed to decode an API response.
-    #[error("decoding error: {0}")]
-    Decoding(String),
+    /// Failed to decode an API response. Carries caller-supplied context and the
+    /// underlying error source so the chain survives end-to-end.
+    #[error("decoding error: {context}: {source}")]
+    Decoding {
+        /// What was being decoded (e.g., URL or operation).
+        context: String,
+        /// Underlying error from the HTTP client.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     /// The media item does not have a video URL.
     #[error("media item does not have a video URL: {0}")]
@@ -67,4 +74,8 @@ pub enum Error {
     /// An error occurred while running yt-dlp.
     #[error("yt-dlp error: {0}")]
     YtDlp(String),
+
+    /// Plex metadata generation or collection repair failed.
+    #[error("Plex metadata error: {0}")]
+    Plex(String),
 }

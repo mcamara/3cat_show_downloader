@@ -5,6 +5,12 @@ use clap::Parser;
 use indicatif::MultiProgress;
 
 fn main() -> anyhow::Result<()> {
+    let launch_gui =
+        std::env::args_os().len() == 1 || std::env::args_os().any(|argument| argument == "--gui");
+    if launch_gui {
+        return cat_show_downloader::gui::launch();
+    }
+
     let multi_progress = MultiProgress::new();
 
     tracing_subscriber::fmt()

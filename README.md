@@ -24,6 +24,20 @@ Descarrega el binari des de [releases](https://github.com/mcamara/3cat_show_down
 ./cat_show_downloader bola-de-drac --directory ~/Downloads/bola-de-drac/
 ```
 
+### Interficie grafica
+
+A Windows, obre `cat_show_downloader.exe` amb doble clic. Tambe pots iniciar la
+finestra explicitament:
+
+```powershell
+.\cat_show_downloader.exe --gui
+```
+
+La GUI permet seleccionar el programa, la carpeta de destinacio, el capitol
+inicial, la concurrencia, la recompressio, els subtitols i el mode Plex. La
+descarrega s'executa en segon pla i la sortida apareix dins la mateixa finestra.
+El mode Plex encara necessita l'ID de serie de TheTVDB.
+
 ### Opcions
 
 | Opcio | Curt | Descripcio | Per defecte |
@@ -35,6 +49,13 @@ Descarrega el binari des de [releases](https://github.com/mcamara/3cat_show_down
 | `--skip-subtitles` | | No descarregar els subtítols | `false` |
 | `--fix-existing-subtitles` | `-f` | Netejar els fitxers de subtítols (.vtt) ja descarregats al directori | `false` |
 | `--embed-existing-subtitles` | | Netejar i incrustar els subtítols als videos ja descarregats (requereix ffmpeg) | `false` |
+| `--strict-subtitles` | | Aborta la descarrega completa si falla la descarrega o neteja dels subtítols dun episodi. Per defecte, els errors de subtítols simplement saxon amb un warning i el video es desa igual. | `false` |
+| `--auto-naming` | | Desa els fitxers amb el format `Mic - <slug> - SXXEYY (<ext>)` dins `Temporada XX/` (episodis) o `Pel·lícules/` (pel·lícules). | `false` |
+| `--season` | | Numero de temporada utilitzat per `--auto-naming`. Es zero-padded a dos digits. | `1` |
+| `--plex-metadata` | | Activa noms Plex, fitxers NFO i tags MKV. Requereix `--tvdb-series-id`. | `false` |
+| `--tvdb-series-id` | | ID de la sèrie a TheTVDB; per MIC3 és `280190`. | — |
+| `--repair-existing` | | `plan` audita sense tocar res; `apply` repara una col·lecció existent. | — |
+| `--reencode` | | Re-codifica el video amb ffmpeg per reduir la mida: `off` (def.), `light` (H.264 CRF 26, ~-35%), `balanced` (H.264 CRF 23, ~-50%, recomanat), `max` (H.265 CRF 28, ~-65%, mes lent). Prefereix el encoder de la GPU (NVIDIA NVENC) si esta disponible, amb fallback transparent a `libx264`/`libx265` per CPU. Audio i subs es preserven. | `off` |
 
 Per exemple, per descarregar una sèrie amb 4 capítols alhora en paral·lel:
 
@@ -91,9 +112,50 @@ Si yt-dlp no està instal·lat, el programa continuarà funcionant amb el client
 
 ### Integracio amb ffmpeg
 
-Si tens [ffmpeg](https://ffmpeg.org/) instal·lat i accessible al PATH del sistema, els subtítols s'incrustaran automaticament als fitxers de video durant la descarrega. Els subtítols VTT es converteixen a format ASS (Advanced SubStation Alpha) per preservar l'estil original (colors, fons, etc.) i s'incrusten en un fitxer `.mkv` (Matroska) en lloc de `.mp4`. Els fitxers `.vtt` s'eliminen automaticament un cop incrustats.
+Si tens [ffmpeg](https://ffmpeg.org/) instal·lat i accessible al PATH del sistema, totes les descàrregues acaben com a `.mkv` (Matroska) independentment del container original i de si s'ha activat `--reencode` o la incrustació de subtítols. Al final de la descarrega s'aplica un remux sense pèrdua (`ffmpeg -c copy -f matroska`) que garanteix aquest container; l'operació és idempotent i, si falla, es conserva el fitxer original.
 
-Si ffmpeg no esta instal·lat, els subtítols es descarregaran com a fitxers `.vtt` separats i el video es mantindrà com a `.mp4` (el comportament original).
+A més, a l'inici del programa es fa una sola crida a `ffmpeg -encoders` per detectar quins encoders de video té el sistema. Si la teva ffmpeg inclou els mòduls de NVIDIA NVENC (`h264_nvenc` / `hevc_nvenc`), el flag `--reencode` els utilitzarà preferentment; si no, fallback transparent a `libx264`/`libx265` per CPU. La línia `encoder capabilities: h264=[nvenc,libsw], hevc=[nvenc,libsw]` (o equivalent) surt a l'inici perquè sàpigues quin backend està actiu.
+
+## Metadades Plex per MIC3
+
+Mode Plex combina dues fonts conservadorament: numeració *Aired Order* de TheTVDB només quan títol té coincidència única exacta o similitud mínima `0.95`; resta conserva número original 3Cat com `S01E<capítol>`. Títol, sinopsi, data i durada sempre provenen de 3Cat en català.
+
+Auditoria sense modificar fitxers:
+
+```powershell
+cargo run -- mic --directory C:\Mic3 --plex-metadata --tvdb-series-id 280190 --repair-existing plan
+```
+
+Aplicació després de revisar pla (`mkvpropedit`, `mkvextract`, `mkvinfo`, `ffprobe` requerits):
+
+```powershell
+cargo run -- mic --directory C:\Mic3 --plex-metadata --tvdb-series-id 280190 --repair-existing apply
+```
+
+Abans del primer canvi, `apply` crea `C:\Mic3\plex-repair-<timestamp>\manifest.json` i exporta tags originals. Resultat:
+
+```text
+C:\Mic3\Plex TV\MIC3 {tvdb-280190}\Season XX\
+  MIC3 - SxxEyy - Títol [1080p].mkv
+  MIC3 - SxxEyy - Títol [1080p].nfo
+```
+
+Futures descàrregues:
+
+```powershell
+cargo run -- mic --directory C:\Mic3 --plex-metadata --tvdb-series-id 280190
+```
+
+### Configuració manual Plex
+
+1. Crea biblioteca `TV Shows` separada.
+2. Usa `C:\Mic3\Plex TV` com arrel.
+3. A `Advanced > Agent`, selecciona `Plex NFO Series`.
+4. Escaneja biblioteca i refresca metadades MIC3.
+
+Plex Media Server `1.43.1` o superior necessari. No apuntis biblioteca a `C:\`; arrel ha de contenir carpetes individuals de sèrie.
+
+Els subtítols VTT es converteixen a format ASS (Advanced SubStation Alpha) per preservar l'estil original (colors, fons, etc.) i s'incrusten com a pista tova dins del `.mkv`. Els fitxers `.vtt` s'eliminen automaticament un cop incrustats.
 
 L'opcio `--embed-existing-subtitles` permet incrustar els subtítols als videos que ja s'han descarregat previament. Aquesta opcio tambe neteja els subtítols (igual que `--fix-existing-subtitles`) abans d'incrustar-los. Un cop incrustats, els fitxers `.vtt` i `.mp4` originals s'eliminen i es genera un fitxer `.mkv`. Aquesta opcio requereix que ffmpeg estigui instal·lat.
 

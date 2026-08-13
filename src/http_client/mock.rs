@@ -1,5 +1,7 @@
 //! Mock HTTP client for testing.
 
+#![allow(dead_code)] // mock is reserved for downstream consumers (test code lives next to the trait)
+
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
 

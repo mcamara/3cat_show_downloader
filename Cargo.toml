@@ -15,7 +15,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/mcamara/3cat_show_downloader"
-version = "1.2.0"
+version = "1.4.0"
 
 [[bin]]
 name = "cat_show_downloader"
@@ -43,6 +43,8 @@ tokio = { version = "1", features = ["full", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unidecode = "~0.3"
+eframe = "0.36.1"
+rfd = "0.17.2"
 
 [dev-dependencies]
 

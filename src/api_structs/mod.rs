@@ -13,36 +13,3 @@ impl Display for Tv3Error {
         write!(f, "Error")
     }
 }
-
-/// Root wrapper for the single-media detail response.
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeRoot {
-    /// Video file metadata.
-    pub media: SingleEpisodeMedia,
-    /// Available subtitle tracks (absent or empty when the episode has none).
-    #[serde(rename = "subtitols")]
-    pub subtitles: Option<Vec<SingleEpisodeSubtitles>>,
-}
-
-/// Container for the list of video URLs.
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeMedia {
-    /// Available video file URLs with their active status.
-    pub url: Vec<UrlMetadata>,
-}
-
-/// A single video URL entry from the media API.
-#[derive(Debug, Deserialize)]
-pub struct UrlMetadata {
-    /// Direct URL to the video file.
-    pub file: String,
-    /// Whether this URL is currently active/available.
-    pub active: bool,
-}
-
-/// A single subtitle track entry from the media API.
-#[derive(Debug, Deserialize)]
-pub struct SingleEpisodeSubtitles {
-    /// Direct URL to the subtitle file.
-    pub url: String,
-}

@@ -88,12 +88,35 @@ impl HttpClientTrait for HttpClient {
         T: DeserializeOwned,
         S: DeserializeOwned + Debug + Display,
     {
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let response = response.json::<S>().await?;
             return Err(Error::Request(response));
         }
 
-        let response = response.json::<T>().await.map_err(Error::RequestBodyRead)?;
-        Ok(response)
+        // [DEBUG-decode] read body as bytes so we can dump a preview on JSON failure
+        let bytes = response.bytes().await.map_err(Error::RequestBodyRead)?;
+        let parsed: std::result::Result<T, serde_json::Error> = serde_json::from_slice(&bytes);
+        match parsed {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                let preview_len = bytes.len().min(512);
+                let preview = String::from_utf8_lossy(&bytes[..preview_len]).into_owned();
+                tracing::error!(
+                    target: "DEBUG-decode",
+                    status = %status,
+                    content_length = bytes.len(),
+                    preview = %preview,
+                    error = %e,
+                    "failed to decode response body as expected JSON",
+                );
+                Err(Error::DecodeBody {
+                    status,
+                    content_length: bytes.len(),
+                    preview,
+                    source: e,
+                })
+            }
+        }
     }
 }

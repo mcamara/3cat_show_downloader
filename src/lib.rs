@@ -11,12 +11,15 @@ mod cli;
 mod downloader;
 mod error;
 mod ffmpeg;
+pub mod gui;
 mod http_client;
 mod media_resolver;
 mod models;
 mod movie;
+mod plex;
 mod scheduler;
 pub mod subtitle_cleaner;
+mod transcode;
 mod tv_show;
 mod yt_dlp;
 
@@ -30,6 +33,7 @@ use tracing_subscriber::fmt::MakeWriter;
 pub use crate::cli::CatShowDownloaderArgs;
 use crate::media_resolver::MediaType;
 use crate::models::{DownloadParams, SubtitleMode};
+use crate::transcode::ReencodePreset;
 
 /// A [`MakeWriter`] implementation that routes output through [`MultiProgress::println`].
 ///
@@ -109,8 +113,21 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         );
     }
 
+    // Strip trailing path separators (`\` or `/`) from `--directory` so
+    // `Path::join("Temporada 01")` produces a clean path rather than
+    // `"G:\\Series\\Mic3\\""\\Temporada 01` (which fails on Windows with
+    // `os error 123`: "The filename, directory name, or volume label
+    // syntax is incorrect"). Also strip a literal pair of surrounding
+    // double quotes that some shells forward when the user types `-d "..."`.
+    let mut directory = args.directory.trim().to_string();
+    if directory.starts_with('"') && directory.ends_with('"') && directory.len() >= 2 {
+        directory = directory[1..directory.len() - 1].to_string();
+    }
+    let mut directory = directory.trim_end_matches(['\\', '/']).to_string();
+    info!("Output directory: {directory:?}");
+
     if args.fix_existing_subtitles {
-        subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
+        subtitle_cleaner::fix_existing_subtitles(&directory)?;
     }
 
     let (ffmpeg_available, yt_dlp_available) =
@@ -122,11 +139,39 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
                 "--embed-existing-subtitles requires ffmpeg, but ffmpeg was not found on PATH"
             );
         }
-        ffmpeg::embed_existing_subtitles(&args.directory).await?;
+        ffmpeg::embed_existing_subtitles(&directory).await?;
     }
 
     let http_client = http_client::http_client();
     let media = media_resolver::get_media_id(&args.slug).await?;
+
+    if args.plex_metadata {
+        let tvdb_id = args
+            .tvdb_series_id
+            .ok_or_else(|| anyhow::anyhow!("--plex-metadata requires --tvdb-series-id"))?;
+        let require_tools = !matches!(args.repair_existing, Some(cli::RepairExistingMode::Plan));
+        plex::preflight(require_tools)?;
+        let tv_show_id = match &media {
+            MediaType::TvShow(id) => *id,
+            MediaType::Movie { .. } => {
+                anyhow::bail!("--plex-metadata currently supports TV shows only")
+            }
+        };
+        if let Some(mode) = args.repair_existing {
+            return plex::repair_existing(
+                std::path::Path::new(&directory),
+                tv_show_id,
+                tvdb_id,
+                matches!(mode, cli::RepairExistingMode::Apply),
+                &http_client,
+            )
+            .await;
+        }
+        directory = plex::series_root(std::path::Path::new(&directory), tvdb_id)
+            .to_string_lossy()
+            .into_owned();
+        info!("Plex series directory: {directory:?}");
+    }
 
     let subtitle_mode = if args.skip_subtitles {
         SubtitleMode::Skip
@@ -138,21 +183,77 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         SubtitleMode::Download
     };
 
+    if args.strict_subtitles {
+        info!("--strict-subtitles set: subtitle failures will abort the batch");
+    } else {
+        info!(
+            "Subtitle failures will be tolerated (warn + skip). Pass --strict-subtitles to abort on failures."
+        );
+    }
+
+    if args.auto_naming {
+        info!(
+            "--auto-naming set: files will be saved as 'Mic - <slug> - S{:02}E<ep> (<fmt>)' under Temporada XX/ (or Pel·lícules/ for movies); season defaults to {}",
+            args.season, args.season
+        );
+    }
+
     if yt_dlp_available {
         info!("yt-dlp detected, using it as the download backend");
     }
 
+    let reencode_preset = ReencodePreset::parse(&args.reencode)?;
+    if !reencode_preset.is_off() && !ffmpeg_available {
+        anyhow::bail!(
+            "--reencode {} requires ffmpeg, but ffmpeg was not found on PATH",
+            args.reencode
+        );
+    }
+    if !reencode_preset.is_off() {
+        info!(
+            "--reencode {} set: each downloaded file will be re-encoded (audio + subs preserved)",
+            args.reencode
+        );
+    }
+
+    if args.request_delay_ms > 0 {
+        info!(
+            "--request-delay-ms {} set: a delay will be applied before each yt-dlp invocation to avoid 3cat's rate limiter",
+            args.request_delay_ms
+        );
+    }
+
+    // Probe encoder capabilities once so the re-encode stage can prefer the
+    // GPU (NVIDIA NVENC / AMD AMF / Intel QSV) over software `libx264` /
+    // `libx265`. The probe is best-effort: when it fails we silently fall
+    // back to CPU encoders in `pick_vcodec`. A summary line is emitted at
+    // info level so the user can see which backend is in use.
+    let reencode_capabilities = ffmpeg::probe_encoders().await;
+    let reencode_capabilities = Arc::new((*reencode_capabilities).clone());
+    info!("{}", reencode_capabilities.summary());
+
+    let auto_naming = args.auto_naming;
     let params = DownloadParams {
         http_client,
         subtitle_mode,
         concurrent_downloads: args.concurrent_downloads,
         multi_progress,
-        directory: Arc::from(args.directory.as_str()),
+        directory: Arc::from(directory.as_str()),
         yt_dlp_available,
+        strict_subtitles: args.strict_subtitles,
+        auto_naming,
+        reencode_preset,
+        reencode_capabilities,
+        request_delay_ms: args.request_delay_ms,
+        plex_metadata: args.plex_metadata,
+        tvdb_series_id: args.tvdb_series_id,
     };
+    let season = i32::try_from(args.season).ok();
 
     let result = match media {
-        MediaType::TvShow(id) => tv_show::download(id, args.start_from_episode, &params).await,
+        MediaType::TvShow(id) => {
+            tv_show::download(id, args.start_from_episode, &params, season).await
+        }
         MediaType::Movie { id, slug } => movie::download(id, &slug, &params).await,
     };
 

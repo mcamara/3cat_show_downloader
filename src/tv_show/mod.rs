@@ -1,13 +1,14 @@
 //! TV show ID retrieval and episode downloading from 3cat.
 
 mod api_structs;
-mod episodes;
+pub(crate) mod episodes;
 
 use regex::Regex;
 use tracing::{info, instrument};
 
 use crate::error::{Error, Result};
 use crate::models::DownloadParams;
+use crate::plex;
 use crate::scheduler;
 
 const TV3_TV_SHOW_API_URL: &str = "https://www.3cat.cat/3cat/{slug}/";
@@ -44,6 +45,10 @@ pub async fn get_tv_show_id(slug: &str) -> Result<i32> {
 
 /// Downloads all episodes for a TV show, filtering and scheduling concurrently.
 ///
+/// When `season` is `Some(n)`, every downloaded episode is tagged with that
+/// season for the auto-naming convention. Pass `None` to use the source API's
+/// own season metadata (currently always `None`).
+///
 /// # Errors
 ///
 /// Returns an error if episode fetching or any download task fails.
@@ -52,8 +57,31 @@ pub async fn download(
     tv_show_id: i32,
     start_from_episode: i32,
     params: &DownloadParams,
+    season: Option<i32>,
 ) -> anyhow::Result<()> {
-    let episodes = episodes::get_episodes(&params.http_client, tv_show_id).await?;
+    let mut episodes = episodes::get_episodes(&params.http_client, tv_show_id).await?;
+
+    if params.plex_metadata {
+        plex::enrich_with_tvdb(
+            &mut episodes,
+            params
+                .tvdb_series_id
+                .ok_or_else(|| anyhow::anyhow!("missing TheTVDB series ID"))?,
+        )
+        .await?;
+    } else {
+        for episode in &mut episodes {
+            episode.plex = None;
+        }
+    }
+
+    // Sort by episode number so the scheduler processes the oldest
+    // episodes first. The 3cat API no longer returns the `capitol` field
+    // and now serves items in reverse-chronological order (most recent
+    // first). Without an explicit sort, `--start-from-episode 1` would
+    // skip nothing (every item has `episode_number >= 1`) but the user
+    // would receive the newest episode first instead of Mic's pilot.
+    episodes.sort_by_key(|ep| ep.episode_number.unwrap_or(i32::MAX));
 
     let episodes_to_download: Vec<_> = episodes
         .into_iter()
@@ -63,6 +91,12 @@ pub async fn download(
                 false
             }
             _ => true,
+        })
+        .map(|mut ep| {
+            if !params.plex_metadata {
+                ep.season = season;
+            }
+            ep
         })
         .collect();
 
@@ -77,5 +111,15 @@ pub async fn download(
         params.concurrent_downloads,
     );
 
-    scheduler::download_all(episodes_to_download, params).await
+    let plex_items = params.plex_metadata.then(|| episodes_to_download.clone());
+    scheduler::download_all(episodes_to_download, params).await?;
+    if let Some(items) = plex_items {
+        plex::finalize_downloads(
+            &items,
+            std::path::Path::new(params.directory.as_ref()),
+            params.tvdb_series_id.expect("validated TheTVDB ID"),
+        )
+        .await?;
+    }
+    Ok(())
 }

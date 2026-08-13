@@ -83,6 +83,9 @@ pub async fn download(movie_id: i32, slug: &str, params: &DownloadParams) -> any
         subtitle_url: None,
         episode_number: None,
         tv_show_name: None,
+        season: None,
+        subtitle_failed: false,
+        plex: None,
     };
 
     downloader::fetch_and_download_media(item, params).await?;
