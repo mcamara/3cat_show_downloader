@@ -27,19 +27,19 @@ pub async fn get_tv_show_id(slug: &str) -> Result<i32> {
             "Error getting tv show id: {e} (is the tv show slug correct?)"
         ))
     })?;
-    let re = Regex::new(r"programatv_id=(\d+)")?;
+    extract_tv_show_id(&html_content)
+}
 
-    let matches: Vec<_> = re.captures_iter(&html_content).collect();
+fn extract_tv_show_id(html_content: &str) -> Result<i32> {
+    let re = Regex::new(r#"programatv_id=(\d+)|"programaId":(\d+)"#)?;
 
-    if let Some(last_match) = matches.last() {
-        if let Some(programatv_id) = last_match.get(1) {
-            return Ok(programatv_id.as_str().parse()?);
-        }
-    }
-
-    Err(Error::TvShowIdRetrieval(
-        "No id found in the tv show page".to_string(),
-    ))
+    re.captures_iter(html_content)
+        .last()
+        .and_then(|captures| captures.get(1).or_else(|| captures.get(2)))
+        .ok_or_else(|| Error::TvShowIdRetrieval("No id found in the tv show page".to_string()))?
+        .as_str()
+        .parse()
+        .map_err(Into::into)
 }
 
 /// Downloads all episodes for a TV show, filtering and scheduling concurrently.
