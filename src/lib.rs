@@ -109,6 +109,8 @@ pub async fn run(args: CatShowDownloaderArgs, multi_progress: MultiProgress) -> 
         );
     }
 
+    tokio::fs::create_dir_all(&args.directory).await?;
+
     if args.fix_existing_subtitles {
         subtitle_cleaner::fix_existing_subtitles(&args.directory)?;
     }
